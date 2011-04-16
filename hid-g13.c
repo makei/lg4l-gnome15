@@ -1174,7 +1174,7 @@ static int g13_probe(struct hid_device *hdev,
 
 	data->gfb_data = gfb_probe(hdev, GFB_PANEL_TYPE_160_43_1);
 	if (data->gfb_data == NULL) {
-		dev_err(&hdev->dev, G13_NAME " error registering framebuffer\n", i);
+		dev_err(&hdev->dev, G13_NAME " error registering framebuffer\n");
 		goto err_cleanup_registered_leds;
 	}
 

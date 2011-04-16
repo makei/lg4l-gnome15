@@ -1204,7 +1204,7 @@ static int g19_probe(struct hid_device *hdev,
 
 	data->gfb_data = gfb_probe(hdev, GFB_PANEL_TYPE_320_240_16);
 	if (data->gfb_data == NULL) {
-		dev_err(&hdev->dev, G19_NAME " error registering framebuffer\n", i);
+		dev_err(&hdev->dev, G19_NAME " error registering framebuffer\n");
 		goto err_cleanup_registered_leds;
 	}
 
