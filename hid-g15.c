@@ -442,6 +442,7 @@ static int g15_input_setkeycode(struct input_dev *dev,
 				int scancode,
 				int keycode)
 {
+        unsigned long irq_flags;
 	int old_keycode;
 	int i;
 	struct g15_data *data = input_get_g15data(dev);
@@ -449,7 +450,7 @@ static int g15_input_setkeycode(struct input_dev *dev,
 	if (scancode >= dev->keycodemax)
 		return -EINVAL;
 
-	spin_lock(&data->lock);
+	spin_lock_irqsave(&data->lock, irq_flags);
 
 	old_keycode = data->keycode[scancode];
 	data->keycode[scancode] = keycode;
@@ -464,7 +465,7 @@ static int g15_input_setkeycode(struct input_dev *dev,
 		}
 	}
 
-	spin_unlock(&data->lock);
+	spin_unlock_irqrestore(&data->lock, irq_flags);
 
 	return 0;
 }
@@ -766,6 +767,7 @@ static ssize_t g15_name_show(struct device *dev,
 			     struct device_attribute *attr,
 			     char *buf)
 {
+        unsigned long irq_flags;
 	struct g15_data *data = dev_get_drvdata(dev);
 	int result;
 
@@ -774,9 +776,9 @@ static ssize_t g15_name_show(struct device *dev,
 		return 1;
 	}
 
-	spin_lock(&data->lock);
+	spin_lock_irqsave(&data->lock, irq_flags);
 	result = sprintf(buf, "%s", data->name);
-	spin_unlock(&data->lock);
+	spin_unlock_irqrestore(&data->lock, irq_flags);
 
 	return result;
 }
@@ -785,11 +787,12 @@ static ssize_t g15_name_store(struct device *dev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
+        unsigned long irq_flags;
 	struct g15_data *data = dev_get_drvdata(dev);
 	size_t limit = count;
 	char *end;
 
-	spin_lock(&data->lock);
+	spin_lock_irqsave(&data->lock, irq_flags);
 
 	if (data->name != NULL) {
 		kfree(data->name);
@@ -810,7 +813,7 @@ static ssize_t g15_name_store(struct device *dev,
 		strncpy(data->name, buf, limit);
 	}
 
-	spin_unlock(&data->lock);
+	spin_unlock_irqrestore(&data->lock, irq_flags);
 
 	return count;
 }
@@ -972,19 +975,21 @@ static int g15_raw_event(struct hid_device *hdev,
 			 struct hid_report *report,
 			 u8 *raw_data, int size)
 {
+        unsigned long irq_flags;
+
 	/*
-	* On initialization receive a 258 byte message with
-	* data = 6 0 255 255 255 255 255 255 255 255 ...
-	*/
+	 * On initialization receive a 258 byte message with
+	 * data = 6 0 255 255 255 255 255 255 255 255 ...
+	 */
 	struct g15_data *data;
 	data = dev_get_drvdata(&hdev->dev);
 
-	spin_lock(&data->lock);
+	spin_lock_irqsave(&data->lock, irq_flags);
 
 	if (unlikely(data->need_reset)) {
 		g15_msg_send(hdev, 4, ~data->led, 0);
 		data->need_reset = 0;
-		spin_unlock(&data->lock);
+		spin_unlock_irqrestore(&data->lock, irq_flags);
 		return 1;
 	}
 
@@ -1014,11 +1019,11 @@ static int g15_raw_event(struct hid_device *hdev,
 		    data->ready_stages == G15_READY_STAGE_3)
 			complete_all(&data->ready);
 
-		spin_unlock(&data->lock);
+		spin_unlock_irqrestore(&data->lock, irq_flags);
 		return 1;
 	}
 
-	spin_unlock(&data->lock);
+	spin_unlock_irqrestore(&data->lock, irq_flags);
 
 	if (likely(report->id == 2)) {
 		g15_raw_event_process_input(hdev, data, raw_data);
@@ -1043,6 +1048,7 @@ static void g15_initialize_keymap(struct g15_data *data)
 static int g15_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
 {
+        unsigned long irq_flags;
 	int error;
 	struct g15_data *data;
 	int i;
@@ -1268,7 +1274,7 @@ static int g15_probe(struct hid_device *hdev,
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
-	spin_lock(&data->lock);
+	spin_lock_irqsave(&data->lock, irq_flags);
 	if (data->ready_stages != G15_READY_STAGE_1) {
 		dev_warn(&hdev->dev, G15_NAME " hasn't completed stage 1 yet, forging ahead with initialization\n");
 		/* Force the stage */
@@ -1276,7 +1282,7 @@ static int g15_probe(struct hid_device *hdev,
 	}
 	init_completion(&data->ready);
 	data->ready_stages |= G15_READY_SUBSTAGE_4;
-	spin_unlock(&data->lock);
+	spin_unlock_irqrestore(&data->lock, irq_flags);
 
 	/*
 	 * Send the init report, then follow with the input report to trigger
@@ -1287,7 +1293,7 @@ static int g15_probe(struct hid_device *hdev,
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
-	spin_lock(&data->lock);
+	spin_lock_irqsave(&data->lock, irq_flags);
 	if (data->ready_stages != G15_READY_STAGE_2) {
 		dev_warn(&hdev->dev, G15_NAME " hasn't completed stage 2 yet, forging ahead with initialization\n");
 		/* Force the stage */
@@ -1295,7 +1301,7 @@ static int g15_probe(struct hid_device *hdev,
 	}
 	init_completion(&data->ready);
 	data->ready_stages |= G15_READY_SUBSTAGE_6;
-	spin_unlock(&data->lock);
+	spin_unlock_irqrestore(&data->lock, irq_flags);
 
 	/*
 	 * Clear the LEDs
@@ -1312,7 +1318,7 @@ static int g15_probe(struct hid_device *hdev,
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
-	spin_lock(&data->lock);
+	spin_lock_irqsave(&data->lock, irq_flags);
 
 	if (data->ready_stages != G15_READY_STAGE_3) {
 		dev_warn(&hdev->dev, G15_NAME " hasn't completed stage 3 yet, forging ahead with initialization\n");
@@ -1322,7 +1328,7 @@ static int g15_probe(struct hid_device *hdev,
 		dbg_hid(G15_NAME " stage 3 complete\n");
 	}
 
-	spin_unlock(&data->lock);
+	spin_unlock_irqrestore(&data->lock, irq_flags);
 
 	g15_set_keymap_switching(hdev, 1);
 
@@ -1394,11 +1400,12 @@ static void g15_remove(struct hid_device *hdev)
 
 static void g15_post_reset_start(struct hid_device *hdev)
 {
+        unsigned long irq_flags;
 	struct g15_data *data = hid_get_g15data(hdev);
 
-	spin_lock(&data->lock);
+	spin_lock_irqsave(&data->lock, irq_flags);
 	data->need_reset = 1;
-	spin_unlock(&data->lock);
+	spin_unlock_irqrestore(&data->lock, irq_flags);
 }
 
 static const struct hid_device_id g15_devices[] = {
