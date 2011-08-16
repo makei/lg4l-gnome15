@@ -45,6 +45,7 @@
 #define G19_DEFAULT_GREEN (255)
 #define G19_DEFAULT_BLUE (0)
 
+#define LED_COUNT 8
 /* LED array indices */
 #define G19_LED_M1 0
 #define G19_LED_M2 1
@@ -53,6 +54,7 @@
 #define G19_LED_BL_R 4
 #define G19_LED_BL_G 5
 #define G19_LED_BL_B 6
+#define G19_LED_BL_SCREEN 7
 
 #define G19_REPORT_4_INIT	0x00
 #define G19_REPORT_4_FINALIZE	0x01
@@ -76,6 +78,7 @@
 struct g19_data {
 	/* HID reports */
 	struct hid_device *hdev;
+	struct hid_report *screen_bl_report;
 	struct hid_report *backlight_report;
 	struct hid_report *start_input_report;
 	struct hid_report *feature_report_4;
@@ -89,6 +92,7 @@ struct g19_data {
 	int scancode_state[G19_KEYS];
 	u8 rgb[3];
 	u8 led;
+	u8 screen_bl;
 	u8 curkeymap;
 	u8 keymap_switching;
 
@@ -101,7 +105,7 @@ struct g19_data {
 	spinlock_t ep1_urb_lock;
 
 	/* LED stuff */
-	struct led_classdev *led_cdev[7];
+	struct led_classdev *led_cdev[LED_COUNT];
 
 	/* Housekeeping stuff */
 	spinlock_t lock;
@@ -183,7 +187,7 @@ static int g19_input_get_keycode(struct input_dev * dev,
 		.flags    = 0,
 		.len      = sizeof(scancode),
 		.index    = scancode,
-		.scancode = scancode,
+		.scancode = { scancode },
 	};
 	
 	retval   = input_get_keycode(dev, &ke);
@@ -205,6 +209,33 @@ static void g19_led_send(struct hid_device *hdev)
 	data->led_report->field[0]->value[0] = data->led&0xFF;
 
 	usbhid_submit_report(hdev, data->led_report, USB_DIR_OUT);
+}
+
+static void g19_screen_bl_send(struct hid_device *hdev)
+{
+	struct g19_data *data = hid_get_g19data(hdev);
+	// From PylibG19
+	data->screen_bl_report->field[0]->value[0] = data->screen_bl;
+	data->screen_bl_report->field[0]->value[1] = 0xe2;
+	data->screen_bl_report->field[0]->value[2] = 0x12;
+	data->screen_bl_report->field[0]->value[3] = 0x00;
+	data->screen_bl_report->field[0]->value[4] = 0x8c;
+	data->screen_bl_report->field[0]->value[5] = 0x11;
+	data->screen_bl_report->field[0]->value[6] = 0x00;
+	data->screen_bl_report->field[0]->value[7] = 0x10;
+	data->screen_bl_report->field[0]->value[8] = 0x00;
+	usbhid_submit_report(hdev, data->screen_bl_report, USB_DIR_OUT);
+}
+
+static void g19_rgb_send(struct hid_device *hdev)
+{
+	struct g19_data *data = hid_get_g19data(hdev);
+
+	data->backlight_report->field[0]->value[0] = data->rgb[0];
+	data->backlight_report->field[0]->value[1] = data->rgb[1];
+	data->backlight_report->field[0]->value[2] = data->rgb[2];
+
+	usbhid_submit_report(hdev, data->backlight_report, USB_DIR_OUT);
 }
 
 static void g19_led_set(struct led_classdev *led_cdev,
@@ -258,6 +289,50 @@ static void g19_led_mr_brightness_set(struct led_classdev *led_cdev,
 	g19_led_set(led_cdev, value, G19_LED_MR);
 }
 
+static void g19_screen_bl_set(struct led_classdev *led_cdev,
+				      enum led_brightness value)
+{
+
+	struct device *dev;
+	struct hid_device *hdev;
+	struct g19_data *data;
+
+	/* Get the device associated with the led */
+	dev = led_cdev->dev->parent;
+	// TEMPORARY
+	dev_info(dev, G19_NAME " in set brightness");
+
+	/* Get the hid associated with the device */
+	hdev = container_of(dev, struct hid_device, dev);
+
+	/* Get the underlying data value */
+	// TEMPORARY
+	dev_info(dev, G19_NAME " getting data");
+	data = hid_get_g19data(hdev);
+	// TEMPORARY
+	dev_info(dev, G19_NAME " got data");
+
+
+//    data = [val, 0xe2, 0x12, 0x00, 0x8c, 0x11, 0x00, 0x10, 0x00]
+//    rtype = usb.TYPE_VENDOR | usb.RECIP_INTERFACE
+//    self.__usbDeviceMutex.acquire()
+//    try:
+//        self.__usbDevice.handleIf1.controlMsg(rtype, 0x0a, data, 0x0, 0x0, self.__write_timeout)
+//    finally:
+//        self.__usbDeviceMutex.release()
+
+	if (led_cdev == data->led_cdev[G19_LED_BL_SCREEN]) {
+		if (value > 100)
+			value = 100;
+		// TEMPORARY
+		dev_info(dev, G19_NAME " setting brightness: %d", value);
+		data->screen_bl = value;
+		dev_info(dev, G19_NAME " set brightness: %d", value);
+		g19_screen_bl_send(hdev);
+	} else
+		dev_info(dev, G19_NAME " error retrieving LED brightness\n");
+}
+
 static enum led_brightness g19_led_brightness_get(struct led_classdev *led_cdev)
 {
 	struct device *dev;
@@ -290,19 +365,8 @@ static enum led_brightness g19_led_brightness_get(struct led_classdev *led_cdev)
 	return LED_OFF;
 }
 
-static void g19_rgb_send(struct hid_device *hdev)
-{
-	struct g19_data *data = hid_get_g19data(hdev);
-
-	data->backlight_report->field[0]->value[0] = data->rgb[0];
-	data->backlight_report->field[0]->value[1] = data->rgb[1];
-	data->backlight_report->field[0]->value[2] = data->rgb[2];
-
-	usbhid_submit_report(hdev, data->backlight_report, USB_DIR_OUT);
-}
-
 static void g19_led_bl_brightness_set(struct led_classdev *led_cdev,
-				      int value)
+				      enum led_brightness value)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -327,7 +391,7 @@ static void g19_led_bl_brightness_set(struct led_classdev *led_cdev,
 	g19_rgb_send(hdev);
 }
 
-static int g19_led_bl_brightness_get(struct led_classdev *led_cdev)
+static enum led_brightness g19_led_bl_brightness_get(struct led_classdev *led_cdev)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -350,11 +414,34 @@ static int g19_led_bl_brightness_get(struct led_classdev *led_cdev)
 		return data->rgb[2];
 	else
 		dev_info(dev, G19_NAME " error retrieving LED brightness\n");
-	return 0;
+		
+	return LED_OFF;
+}
+static enum led_brightness g19_screen_bl_get(struct led_classdev *led_cdev)
+{
+	struct device *dev;
+	struct hid_device *hdev;
+	struct g19_data *data;
+
+	/* Get the device associated with the led */
+	dev = led_cdev->dev->parent;
+
+	/* Get the hid associated with the device */
+	hdev = container_of(dev, struct hid_device, dev);
+
+	/* Get the underlying data value */
+	data = hid_get_g19data(hdev);
+
+	if (led_cdev == data->led_cdev[G19_LED_BL_SCREEN])
+		return data->screen_bl;
+	else
+		dev_info(dev, G19_NAME " error retrieving LED brightness\n");
+
+	return LED_OFF;
 }
 
 
-static const struct led_classdev g19_led_cdevs[7] = {
+static const struct led_classdev g19_led_cdevs[LED_COUNT] = {
 	{
 		.brightness_set		= g19_led_m1_brightness_set,
 		.brightness_get		= g19_led_brightness_get,
@@ -382,6 +469,10 @@ static const struct led_classdev g19_led_cdevs[7] = {
 	{
 		.brightness_set		= g19_led_bl_brightness_set,
 		.brightness_get		= g19_led_bl_brightness_get,
+	},
+	{
+		.brightness_set		= g19_screen_bl_set,
+		.brightness_get		= g19_screen_bl_get,
 	},
 };
 
@@ -417,6 +508,24 @@ static int g19_input_setkeycode(struct input_dev *dev,
 	return 0;
 }
 
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+static int g19_input_getkeycode(struct input_dev *dev,
+								struct input_keymap_entry *ke)
+{
+	struct g19_data *data = input_get_g19data(dev);
+
+	if (!dev->keycodesize)
+		return -EINVAL;
+
+	if (*ke->scancode >= dev->keycodemax)
+		return -EINVAL;
+
+	ke->keycode = data->keycode[*ke->scancode];
+
+	return 0;
+}
+#else
 static int g19_input_getkeycode(struct input_dev *dev,
 				int scancode,
 				int *keycode)
@@ -433,6 +542,7 @@ static int g19_input_getkeycode(struct input_dev *dev,
 
 	return 0;
 }
+#endif
 
 
 /*
@@ -848,12 +958,14 @@ static void g19_handle_key_event(struct g19_data *data,
 	}
 
 	/* Only report mapped keys */
-	if (keycode != KEY_RESERVED)
+	if (keycode != KEY_RESERVED) {
 		input_report_key(idev, keycode, value);
+	}
 	/* Or report MSC_SCAN on keypress of an unmapped key */
-/*	else if (data->scancode_state[scancode] == 0 && value)
+	else if (data->scancode_state[scancode] == 0 && value) {
 		input_event(idev, EV_MSC, MSC_SCAN, scancode);
-*/
+	}
+
 	data->scancode_state[scancode] = value;
 }
 
@@ -872,7 +984,6 @@ static void g19_raw_event_process_input(struct hid_device *hdev,
 	 * the remainder of the key data. That way the new keymap will
 	 * be loaded if there is a keymap switch.
 	 */
-/*
 	if (unlikely(data->keymap_switching)) {
 		if (data->curkeymap != 0 && raw_data[2] & 0x10)
 			g19_set_keymap_index(hdev, 0);
@@ -881,7 +992,6 @@ static void g19_raw_event_process_input(struct hid_device *hdev,
 		else if (data->curkeymap != 2 && raw_data[2] & 0x40)
 			g19_set_keymap_index(hdev, 2);
 	}
-*/
 	raw_data[3] &= 0xBF; /* bit 6 is always on */
 
 	for (i = 0, mask = 0x01; i < 8; i++, mask <<= 1) {
@@ -1043,8 +1153,6 @@ static int g19_probe(struct hid_device *hdev,
 	struct usb_device *usbdev;
 	struct list_head *feature_report_list =
 		&hdev->report_enum[HID_FEATURE_REPORT].report_list;
-	struct list_head *output_report_list =
-			&hdev->report_enum[HID_OUTPUT_REPORT].report_list;
 	struct hid_report *report;
 	char *led_name;
 
@@ -1163,6 +1271,9 @@ static int g19_probe(struct hid_device *hdev,
 		case 0x07:
 			data->backlight_report = report;
 			break;
+		case 0x08:
+			data->screen_bl_report = report;
+			break;
 		default:
 			break;
 		}
@@ -1174,7 +1285,7 @@ static int g19_probe(struct hid_device *hdev,
 	dbg_hid("Found all reports\n");
 
 	/* Create the LED structures */
-	for (i = 0; i < 7; i++) {
+	for (i = 0; i < LED_COUNT; i++) {
 		data->led_cdev[i] = kzalloc(sizeof(struct led_classdev), GFP_KERNEL);
 		if (data->led_cdev[i] == NULL) {
 			dev_err(&hdev->dev, G19_NAME " error allocating memory for led %d", i);
@@ -1197,29 +1308,32 @@ static int g19_probe(struct hid_device *hdev,
 			goto err_cleanup_led_structs;
 		}
 		switch (i) {
-		case 0:
-		case 1:
-		case 2:
+		case G19_LED_M1:
+		case G19_LED_M2:
+		case G19_LED_M3:
 			sprintf(led_name, "g19_%d:orange:m%d", hdev->minor, i+1);
 			break;
-		case 3:
+		case G19_LED_MR:
 			sprintf(led_name, "g19_%d:red:mr", hdev->minor);
 			break;
-		case 4:
+		case G19_LED_BL_R:
 			sprintf(led_name, "g19_%d:red:bl", hdev->minor);
 			break;
-		case 5:
+		case G19_LED_BL_G:
 			sprintf(led_name, "g19_%d:green:bl", hdev->minor);
 			break;
-		case 6:
+		case G19_LED_BL_B:
 			sprintf(led_name, "g19_%d:blue:bl", hdev->minor);
+			break;
+		case G19_LED_BL_SCREEN:
+			sprintf(led_name, "g19_%d:white:screen", hdev->minor);
 			break;
 
 		}
 		data->led_cdev[i]->name = led_name;
 	}
 
-	for (i = 0; i < 7; i++) {
+	for (i = 0; i < LED_COUNT; i++) {
 		led_num = i;
 		error = led_classdev_register(&hdev->dev, data->led_cdev[i]);
 		if (error < 0) {
@@ -1325,7 +1439,7 @@ err_cleanup_registered_leds:
 		led_classdev_unregister(data->led_cdev[i]);
 
 err_cleanup_led_structs:
-	for (i = 0; i < 7; i++) {
+	for (i = 0; i < LED_COUNT; i++) {
 		if (data->led_cdev[i] != NULL) {
 			if (data->led_cdev[i]->name != NULL)
 				kfree(data->led_cdev[i]->name);
@@ -1374,7 +1488,7 @@ static void g19_remove(struct hid_device *hdev)
 	kfree(data->name);
 
 	/* Clean up the leds */
-	for (i = 0; i < 7; i++) {
+	for (i = 0; i < LED_COUNT; i++) {
 		led_classdev_unregister(data->led_cdev[i]);
 		kfree(data->led_cdev[i]->name);
 		kfree(data->led_cdev[i]);

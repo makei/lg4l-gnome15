@@ -65,11 +65,16 @@
 #define G13_DEFAULT_GREEN (255)
 #define G13_DEFAULT_BLUE (0)
 
+#define LED_COUNT 7
+
 /* LED array indices */
 #define G13_LED_M1 0
 #define G13_LED_M2 1
 #define G13_LED_M3 2
 #define G13_LED_MR 3
+#define G13_LED_BL_R 4
+#define G13_LED_BL_G 5
+#define G13_LED_BL_B 6
 
 #define G13_REPORT_4_INIT	0x00
 #define G13_REPORT_4_FINALIZE	0x01
@@ -113,7 +118,7 @@ struct g13_data {
 	struct gfb_data *gfb_data;
 
 	/* LED stuff */
-	struct led_classdev *led_cdev[4];
+	struct led_classdev *led_cdev[LED_COUNT];
 
 	/* Housekeeping stuff */
 	spinlock_t lock;
@@ -153,10 +158,11 @@ struct g13_data {
  */
 static const unsigned int g13_default_key_map[G13_KEYS] = {
 /* first row g1 - g7 */
+
 KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7,
 /* second row g8 - g11 */
 KEY_UNKNOWN, KEY_UNKNOWN, KEY_BACK, KEY_UP,
-/* second row g12 - g13 */
+/* second row g12 - g14 */
 KEY_FORWARD, KEY_UNKNOWN, KEY_UNKNOWN,
 /* third row g15 - g19 */
 KEY_UNKNOWN, KEY_LEFT, KEY_DOWN, KEY_RIGHT, KEY_UNKNOWN,
@@ -188,7 +194,7 @@ static int g13_input_get_keycode(struct input_dev * dev,
 		.flags    = 0,
 		.len      = sizeof(scancode),
 		.index    = scancode,
-		.scancode = scancode,
+		.scancode = { scancode },
 	};
 	
 	retval   = input_get_keycode(dev, &ke);
@@ -203,6 +209,17 @@ static int g13_input_get_keycode(struct input_dev * dev,
 	return retval;
 }
 
+static void g13_msg_send(struct hid_device *hdev, u8 msg, u8 value1, u8 value2)
+{
+	struct g13_data *data = hid_get_g13data(hdev);
+
+	data->led_report->field[0]->value[0] = msg;
+	data->led_report->field[0]->value[1] = value1;
+	data->led_report->field[0]->value[2] = value2;
+
+	usbhid_submit_report(hdev, data->led_report, USB_DIR_OUT);
+}
+
 static void g13_led_send(struct hid_device *hdev)
 {
 	struct g13_data *data = hid_get_g13data(hdev);
@@ -213,6 +230,18 @@ static void g13_led_send(struct hid_device *hdev)
 	data->led_report->field[0]->value[3] = 0x00;
 
 	usbhid_submit_report(hdev, data->led_report, USB_DIR_OUT);
+}
+
+static void g13_rgb_send(struct hid_device *hdev)
+{
+	struct g13_data *data = hid_get_g13data(hdev);
+
+	data->backlight_report->field[0]->value[0] = data->rgb[0];
+	data->backlight_report->field[0]->value[1] = data->rgb[1];
+	data->backlight_report->field[0]->value[2] = data->rgb[2];
+	data->backlight_report->field[0]->value[3] = 0x00;
+
+	usbhid_submit_report(hdev, data->backlight_report, USB_DIR_OUT);
 }
 
 static void g13_led_set(struct led_classdev *led_cdev,
@@ -298,7 +327,70 @@ static enum led_brightness g13_led_brightness_get(struct led_classdev *led_cdev)
 	return LED_OFF;
 }
 
-static const struct led_classdev g13_led_cdevs[4] = {
+static void g13_led_bl_set(struct led_classdev *led_cdev,
+				      enum led_brightness value)
+{
+	struct device *dev;
+	struct hid_device *hdev;
+	struct g13_data *data;
+
+	/* Get the device associated with the led */
+	dev = led_cdev->dev->parent;
+
+	/* Get the hid associated with the device */
+	hdev = container_of(dev, struct hid_device, dev);
+
+	/* Get the underlying data value */
+	data = hid_get_g13data(hdev);
+
+	if (led_cdev == data->led_cdev[G13_LED_BL_R]) {
+		if (value > 255)
+			value = 255;
+		data->rgb[0] = value;
+		g13_rgb_send(hdev);
+	} else if (led_cdev == data->led_cdev[G13_LED_BL_G]) {
+		if (value > 255)
+			value = 255;
+		data->rgb[1] = value;
+		g13_rgb_send(hdev);
+	} else if (led_cdev == data->led_cdev[G13_LED_BL_B]) {
+		if (value > 255)
+			value = 255;
+		data->rgb[2] = value;
+		g13_rgb_send(hdev);
+	} else
+		dev_info(dev, G13_NAME " error retrieving LED brightness\n");
+
+}
+
+static enum led_brightness g13_led_bl_get(struct led_classdev *led_cdev)
+{
+	struct device *dev;
+	struct hid_device *hdev;
+	struct g13_data *data;
+
+	/* Get the device associated with the led */
+	dev = led_cdev->dev->parent;
+
+	/* Get the hid associated with the device */
+	hdev = container_of(dev, struct hid_device, dev);
+
+	/* Get the underlying data value */
+	data = hid_get_g13data(hdev);
+
+	if (led_cdev == data->led_cdev[G13_LED_BL_R])
+		return data->rgb[0];
+	else if (led_cdev == data->led_cdev[G13_LED_BL_G])
+		return data->rgb[1];
+	else if (led_cdev == data->led_cdev[G13_LED_BL_B])
+		return data->rgb[2];
+	else
+		dev_info(dev, G13_NAME " error retrieving LED brightness\n");
+
+	return LED_OFF;
+}
+
+static const struct led_classdev g13_led_cdevs[LED_COUNT] = {
 	{
 		.brightness_set		= g13_led_m1_brightness_set,
 		.brightness_get		= g13_led_brightness_get,
@@ -315,13 +407,25 @@ static const struct led_classdev g13_led_cdevs[4] = {
 		.brightness_set		= g13_led_mr_brightness_set,
 		.brightness_get		= g13_led_brightness_get,
 	},
+	{
+		.brightness_set		= g13_led_bl_set,
+		.brightness_get		= g13_led_bl_get,
+	},
+	{
+		.brightness_set		= g13_led_bl_set,
+		.brightness_get		= g13_led_bl_get,
+	},
+	{
+		.brightness_set		= g13_led_bl_set,
+		.brightness_get		= g13_led_bl_get,
+	},
 };
 
 static int g13_input_setkeycode(struct input_dev *dev,
 				int scancode,
 				int keycode)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	int old_keycode;
 	int i;
 	struct g13_data *data = input_get_g13data(dev);
@@ -349,6 +453,25 @@ static int g13_input_setkeycode(struct input_dev *dev,
 	return 0;
 }
 
+
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+static int g13_input_getkeycode(struct input_dev *dev,
+								struct input_keymap_entry *ke)
+{
+	struct g13_data *data = input_get_g13data(dev);
+
+	if (!dev->keycodesize)
+		return -EINVAL;
+
+	if (*ke->scancode >= dev->keycodemax)
+		return -EINVAL;
+
+	ke->keycode = data->keycode[*ke->scancode];
+
+	return 0;
+}
+#else
 static int g13_input_getkeycode(struct input_dev *dev,
 				int scancode,
 				int *keycode)
@@ -365,6 +488,7 @@ static int g13_input_getkeycode(struct input_dev *dev,
 
 	return 0;
 }
+#endif
 
 
 /*
@@ -646,7 +770,7 @@ static ssize_t g13_name_show(struct device *dev,
 			     struct device_attribute *attr,
 			     char *buf)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	struct g13_data *data = dev_get_drvdata(dev);
 	int result;
 
@@ -666,7 +790,7 @@ static ssize_t g13_name_store(struct device *dev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	struct g13_data *data = dev_get_drvdata(dev);
 	size_t limit = count;
 	char *end;
@@ -718,18 +842,6 @@ static void g13_feature_report_4_send(struct hid_device *hdev, int which)
 	}
 
 	usbhid_submit_report(hdev, data->feature_report_4, USB_DIR_OUT);
-}
-
-static void g13_rgb_send(struct hid_device *hdev)
-{
-	struct g13_data *data = hid_get_g13data(hdev);
-
-	data->backlight_report->field[0]->value[0] = data->rgb[0];
-	data->backlight_report->field[0]->value[1] = data->rgb[1];
-	data->backlight_report->field[0]->value[2] = data->rgb[2];
-	data->backlight_report->field[0]->value[3] = 0x00;
-
-	usbhid_submit_report(hdev, data->backlight_report, USB_DIR_OUT);
 }
 
 /*
@@ -923,12 +1035,11 @@ static int g13_raw_event(struct hid_device *hdev,
 			 struct hid_report *report,
 			 u8 *raw_data, int size)
 {
-        unsigned long irq_flags;
-
+	unsigned long irq_flags;
 	/*
- 	 * On initialization receive a 258 byte message with
-	 * data = 6 0 255 255 255 255 255 255 255 255 ...
-	 */
+	* On initialization receive a 258 byte message with
+	* data = 6 0 255 255 255 255 255 255 255 255 ...
+	*/
 	struct g13_data *data;
 	data = dev_get_drvdata(&hdev->dev);
 
@@ -997,7 +1108,7 @@ static void g13_initialize_keymap(struct g13_data *data)
 static int g13_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	int error;
 	struct g13_data *data;
 	int i;
@@ -1028,7 +1139,7 @@ static int g13_probe(struct hid_device *hdev,
 		goto err_no_cleanup;
 	}
 
-	spin_lock_init(&data->lock);
+	spin_lock_irqsave(&data->lock, irq_flags);
 
 	init_completion(&data->ready);
 
@@ -1160,7 +1271,7 @@ static int g13_probe(struct hid_device *hdev,
 	dbg_hid("Found all reports\n");
 
 	/* Create the LED structures */
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < LED_COUNT; i++) {
 		data->led_cdev[i] = kzalloc(sizeof(struct led_classdev), GFP_KERNEL);
 		if (data->led_cdev[i] == NULL) {
 			dev_err(&hdev->dev, G13_NAME " error allocating memory for led %d", i);
@@ -1176,26 +1287,35 @@ static int g13_probe(struct hid_device *hdev,
 		 * Since led_classdev->name is a const char* we'll use an
 		 * intermediate until the name is formatted with sprintf().
 		 */
-		led_name = kzalloc(sizeof(char)*15, GFP_KERNEL);
+		led_name = kzalloc(sizeof(char)*25, GFP_KERNEL);
 		if (led_name == NULL) {
 			dev_err(&hdev->dev, G13_NAME " error allocating memory for led %d name", i);
 			error = -ENOMEM;
 			goto err_cleanup_led_structs;
 		}
 		switch (i) {
-		case 0:
-		case 1:
-		case 2:
-			sprintf(led_name, "g13_%d:red:m%d", hdev->minor, i+1);
+		case G13_LED_M1:
+		case G13_LED_M2:
+		case G13_LED_M3:
+			sprintf(led_name, "g13_%d:red:m%d", hdev->minor, i + 1);
 			break;
-		case 3:
+		case G13_LED_MR:
 			sprintf(led_name, "g13_%d:red:mr", hdev->minor);
+			break;
+		case G13_LED_BL_R:
+			sprintf(led_name, "g13_%d:red:bl", hdev->minor);
+			break;
+		case G13_LED_BL_G:
+			sprintf(led_name, "g13_%d:green:bl", hdev->minor);
+			break;
+		case G13_LED_BL_B:
+			sprintf(led_name, "g13_%d:blue:bl", hdev->minor);
 			break;
 		}
 		data->led_cdev[i]->name = led_name;
 	}
 
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < LED_COUNT; i++) {
 		led_num = i;
 		error = led_classdev_register(&hdev->dev, data->led_cdev[i]);
 		if (error < 0) {
@@ -1296,7 +1416,7 @@ err_cleanup_registered_leds:
 		led_classdev_unregister(data->led_cdev[i]);
 
 err_cleanup_led_structs:
-	for (i = 0; i < 7; i++) {
+	for (i = 0; i < LED_COUNT; i++) {
 		if (data->led_cdev[i] != NULL) {
 			if (data->led_cdev[i]->name != NULL)
 				kfree(data->led_cdev[i]->name);
@@ -1340,7 +1460,7 @@ static void g13_remove(struct hid_device *hdev)
 	kfree(data->name);
 
 	/* Clean up the leds */
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < LED_COUNT; i++) {
 		led_classdev_unregister(data->led_cdev[i]);
 		kfree(data->led_cdev[i]->name);
 		kfree(data->led_cdev[i]);
@@ -1354,7 +1474,7 @@ static void g13_remove(struct hid_device *hdev)
 
 static void g13_post_reset_start(struct hid_device *hdev)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	struct g13_data *data = hid_get_g13data(hdev);
 
 	spin_lock_irqsave(&data->lock, irq_flags);

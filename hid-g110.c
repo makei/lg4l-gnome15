@@ -168,7 +168,7 @@ static int g110_input_get_keycode(struct input_dev * dev,
 		.flags    = 0,
 		.len      = sizeof(scancode),
 		.index    = scancode,
-		.scancode = scancode,
+		.scancode = { scancode },
 	};
 	
 	retval   = input_get_keycode(dev, &ke);
@@ -395,7 +395,6 @@ static int g110_input_setkeycode(struct input_dev *dev,
 				int scancode,
 				int keycode)
 {
-        unsigned long irq_flags;
 	int old_keycode;
 	int i;
 	struct g110_data *data = input_get_g110data(dev);
@@ -403,7 +402,7 @@ static int g110_input_setkeycode(struct input_dev *dev,
 	if (scancode >= dev->keycodemax)
 		return -EINVAL;
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 
 	old_keycode = data->keycode[scancode];
 	data->keycode[scancode] = keycode;
@@ -418,11 +417,29 @@ static int g110_input_setkeycode(struct input_dev *dev,
 		}
 	}
 
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	return 0;
 }
 
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+static int g110_input_getkeycode(struct input_dev *dev,
+								struct input_keymap_entry *ke)
+{
+	struct g110_data *data = input_get_g110data(dev);
+
+	if (!dev->keycodesize)
+		return -EINVAL;
+
+	if (*ke->scancode >= dev->keycodemax)
+		return -EINVAL;
+
+	ke->keycode = data->keycode[*ke->scancode];
+
+	return 0;
+}
+#else
 static int g110_input_getkeycode(struct input_dev *dev,
 				int scancode,
 				int *keycode)
@@ -439,6 +456,7 @@ static int g110_input_getkeycode(struct input_dev *dev,
 
 	return 0;
 }
+#endif
 
 
 /*
@@ -720,7 +738,6 @@ static ssize_t g110_name_show(struct device *dev,
 			     struct device_attribute *attr,
 			     char *buf)
 {
-        unsigned long irq_flags;
 	struct g110_data *data = dev_get_drvdata(dev);
 	int result;
 
@@ -729,9 +746,9 @@ static ssize_t g110_name_show(struct device *dev,
 		return 1;
 	}
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 	result = sprintf(buf, "%s", data->name);
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	return result;
 }
@@ -740,12 +757,11 @@ static ssize_t g110_name_store(struct device *dev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
-        unsigned long irq_flags;
 	struct g110_data *data = dev_get_drvdata(dev);
 	size_t limit = count;
 	char *end;
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 
 	if (data->name != NULL) {
 		kfree(data->name);
@@ -766,7 +782,7 @@ static ssize_t g110_name_store(struct device *dev,
 		strncpy(data->name, buf, limit);
 	}
 
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	return count;
 }
@@ -913,21 +929,20 @@ static int g110_raw_event(struct hid_device *hdev,
 			 struct hid_report *report,
 			 u8 *raw_data, int size)
 {
-        unsigned long irq_flags;
 	/*
-	 * On initialization receive a 258 byte message with
-	 * data = 6 0 255 255 255 255 255 255 255 255 ...
-	 */
+	* On initialization receive a 258 byte message with
+	* data = 6 0 255 255 255 255 255 255 255 255 ...
+	*/
 	struct g110_data *data;
 	data = dev_get_drvdata(&hdev->dev);
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 
 	if (unlikely(data->need_reset)) {
 		g110_rgb_send(hdev);
 		g110_led_send(hdev);
 		data->need_reset = 0;
-		spin_unlock_irqrestore(&data->lock, irq_flags);
+		spin_unlock(&data->lock);
 		return 1;
 	}
 
@@ -957,11 +972,11 @@ static int g110_raw_event(struct hid_device *hdev,
 		    data->ready_stages == G110_READY_STAGE_3)
 			complete_all(&data->ready);
 
-		spin_unlock_irqrestore(&data->lock, irq_flags);
+		spin_unlock(&data->lock);
 		return 1;
 	}
 
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	if (likely(report->id == 2)) {
 		g110_raw_event_process_input(hdev, data, raw_data);
@@ -1034,7 +1049,6 @@ static int g110_ep1_read(struct hid_device *hdev)
 static int g110_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
 {
-        unsigned long irq_flags;
 	int error;
 	struct g110_data *data;
 	int i;
@@ -1236,7 +1250,7 @@ static int g110_probe(struct hid_device *hdev,
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 	if (data->ready_stages != G110_READY_STAGE_1) {
 		dev_warn(&hdev->dev, G110_NAME " hasn't completed stage 1 yet, forging ahead with initialization\n");
 		/* Force the stage */
@@ -1244,7 +1258,7 @@ static int g110_probe(struct hid_device *hdev,
 	}
 	init_completion(&data->ready);
 	data->ready_stages |= G110_READY_SUBSTAGE_4;
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	/*
 	 * Send the init report, then follow with the input report to trigger
@@ -1255,7 +1269,7 @@ static int g110_probe(struct hid_device *hdev,
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 	if (data->ready_stages != G110_READY_STAGE_2) {
 		dev_warn(&hdev->dev, G110_NAME " hasn't completed stage 2 yet, forging ahead with initialization\n");
 		/* Force the stage */
@@ -1263,7 +1277,7 @@ static int g110_probe(struct hid_device *hdev,
 	}
 	init_completion(&data->ready);
 	data->ready_stages |= G110_READY_SUBSTAGE_6;
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	/*
 	 * Clear the LEDs
@@ -1284,7 +1298,7 @@ static int g110_probe(struct hid_device *hdev,
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 
 	if (data->ready_stages != G110_READY_STAGE_3) {
 		dev_warn(&hdev->dev, G110_NAME " hasn't completed stage 3 yet, forging ahead with initialization\n");
@@ -1294,7 +1308,7 @@ static int g110_probe(struct hid_device *hdev,
 		dbg_hid(G110_NAME " stage 3 complete\n");
 	}
 
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	g110_set_keymap_switching(hdev, 1);
 
@@ -1373,13 +1387,12 @@ static void g110_remove(struct hid_device *hdev)
 }
 
 static void g110_post_reset_start(struct hid_device *hdev)
-{	
-        unsigned long irq_flags;
-        struct g110_data *data = hid_get_g110data(hdev);
+{
+	struct g110_data *data = hid_get_g110data(hdev);
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 	data->need_reset = 1;
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 }
 
 static const struct hid_device_id g110_devices[] = {
