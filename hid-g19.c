@@ -176,25 +176,16 @@ static int g19_input_get_keycode(struct input_dev * dev,
                                  unsigned int * keycode)
 {
 	int retval;
-	
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
-	
+
 	struct input_keymap_entry ke = {
 		.flags    = 0,
 		.len      = sizeof(scancode),
-		.index    = scancode,
-		.scancode = scancode,
+		.index    = scancode
 	};
-	
+	memcpy(ke.scancode,&scancode,sizeof(scancode));
 	retval   = input_get_keycode(dev, &ke);
 	*keycode = ke.keycode;
-	
-#else
-	
-	retval   = input_get_keycode(dev, scancode, keycode);
-	
-#endif
-	
+
 	return retval;
 }
 
@@ -302,7 +293,7 @@ static void g19_rgb_send(struct hid_device *hdev)
 }
 
 static void g19_led_bl_brightness_set(struct led_classdev *led_cdev,
-				      int value)
+				      enum led_brightness value)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -327,7 +318,7 @@ static void g19_led_bl_brightness_set(struct led_classdev *led_cdev,
 	g19_rgb_send(hdev);
 }
 
-static int g19_led_bl_brightness_get(struct led_classdev *led_cdev)
+static enum led_brightness g19_led_bl_brightness_get(struct led_classdev *led_cdev)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -386,8 +377,8 @@ static const struct led_classdev g19_led_cdevs[7] = {
 };
 
 static int g19_input_setkeycode(struct input_dev *dev,
-				int scancode,
-				int keycode)
+				unsigned int scancode,
+				unsigned int keycode)
 {
   unsigned long irq_flags;
 	int old_keycode;
@@ -418,8 +409,8 @@ static int g19_input_setkeycode(struct input_dev *dev,
 }
 
 static int g19_input_getkeycode(struct input_dev *dev,
-				int scancode,
-				int *keycode)
+				unsigned int scancode,
+				unsigned int *keycode)
 {
 	struct g19_data *data = input_get_g19data(dev);
 
@@ -994,7 +985,7 @@ static void g19_ep1_urb_completion(struct urb *urb)
 		        g19_handle_key_event(data, idev, 24+i, data->ep1keys[0]&(1<<i));
 
                 input_sync(idev);
-                
+
                 usb_submit_urb(urb, GFP_ATOMIC);
         }
 }
@@ -1043,8 +1034,8 @@ static int g19_probe(struct hid_device *hdev,
 	struct usb_device *usbdev;
 	struct list_head *feature_report_list =
 		&hdev->report_enum[HID_FEATURE_REPORT].report_list;
-	struct list_head *output_report_list =
-			&hdev->report_enum[HID_OUTPUT_REPORT].report_list;
+	//struct list_head *output_report_list =
+	//		&hdev->report_enum[HID_OUTPUT_REPORT].report_list;
 	struct hid_report *report;
 	char *led_name;
 
@@ -1362,7 +1353,6 @@ static void g19_remove(struct hid_device *hdev)
 
 	hdev->ll_driver->close(hdev);
 
-	hid_hw_stop(hdev);
 
 	sysfs_remove_group(&(hdev->dev.kobj), &g19_attr_group);
 
@@ -1381,13 +1371,16 @@ static void g19_remove(struct hid_device *hdev)
 	}
 
 	gfb_remove(data->gfb_data);
+	/* usb_free_urb(data->ep1_urb); */
 
-	usb_free_urb(data->ep1_urb);
 
 
 	/* Finally, clean up the g19 data itself */
 	kfree(data);
+	hid_hw_stop(hdev);
 }
+
+EXPORT_SYMBOL_GPL(g19_remove);
 
 static void g19_post_reset_start(struct hid_device *hdev)
 {
@@ -1428,4 +1421,5 @@ module_init(g19_init);
 module_exit(g19_exit);
 MODULE_DESCRIPTION("Logitech G19 HID Driver");
 MODULE_AUTHOR("Alistair Buxton (a.j.buxton@gmail.com)");
-MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Thomas Berger (tbe@boreus.de)");
+MODULE_LICENSE("GPL v2");
