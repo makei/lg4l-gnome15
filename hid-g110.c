@@ -34,7 +34,7 @@
 #define G110_NAME "Logitech G110"
 
 /* Key defines */
-#define G110_KEYS 32
+#define G110_KEYS 17
 #define G110_KEYMAP_SIZE (G110_KEYS*3)
 
 /* Backlight defaults */
@@ -124,36 +124,12 @@ struct g110_data {
  * LIGHT      19
  */
 static const unsigned int g110_default_key_map[G110_KEYS] = {
-/*
   KEY_F1, KEY_F2, KEY_F3, KEY_F4,
   KEY_F5, KEY_F6, KEY_F7, KEY_F8,
   KEY_F9, KEY_F10, KEY_F11, KEY_F12,
-*/
-  KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
-  KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
-  KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
   /* M1, M2, M3, MR */
-  KEY_F21, KEY_F22, KEY_F23, KEY_F24,
-  KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_KBDILLUMTOGGLE,
-  KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
-
-/* Screen keymap
- *
- * Key   Index
- * ----- -----
- * Gear  0
- * Back  1
- * Menu  2
- * OK    3
- * Right 4
- * Left  5
- * Down  6
- * Up    7
- */
-
-
-  KEY_FORWARD, KEY_BACK, KEY_MENU, KEY_OK,
-  KEY_RIGHT, KEY_LEFT, KEY_DOWN, KEY_UP,
+  KEY_PROG1, KEY_PROG2, KEY_PROG3, KEY_RECORD,
+  KEY_KBDILLUMTOGGLE
 };
 
 static int g110_input_get_keycode(struct input_dev * dev,
@@ -316,7 +292,7 @@ static void g110_rgb_send(struct hid_device *hdev)
 }
 
 static void g110_led_bl_brightness_set(struct led_classdev *led_cdev,
-				      int value)
+										enum led_brightness value)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -339,11 +315,12 @@ static void g110_led_bl_brightness_set(struct led_classdev *led_cdev,
 	g110_rgb_send(hdev);
 }
 
-static int g110_led_bl_brightness_get(struct led_classdev *led_cdev)
+static enum led_brightness g110_led_bl_brightness_get(struct led_classdev *led_cdev)
 {
 	struct device *dev;
 	struct hid_device *hdev;
 	struct g110_data *data;
+	int value = 0;
 
 	/* Get the device associated with the led */
 	dev = led_cdev->dev->parent;
@@ -355,12 +332,15 @@ static int g110_led_bl_brightness_get(struct led_classdev *led_cdev)
 	data = hid_get_g110data(hdev);
 
 	if (led_cdev == data->led_cdev[G110_LED_BL_R])
-		return data->backlight_rb[0];
+		value = data->backlight_rb[0];
 	else if (led_cdev == data->led_cdev[G110_LED_BL_B])
-		return data->backlight_rb[1];
+		value = data->backlight_rb[1];
 	else
 		dev_info(dev, G110_NAME " error retrieving LED brightness\n");
-	return 0;
+
+	if (value)
+		return LED_FULL;
+	return LED_OFF;
 }
 
 
@@ -391,7 +371,7 @@ static const struct led_classdev g110_led_cdevs[6] = {
 	},
 };
 
-static int g110_input_setkeycode(struct input_dev *dev,
+static enum led_brightness g110_input_setkeycode(struct input_dev *dev,
 				int scancode,
 				int keycode)
 {
@@ -419,7 +399,7 @@ static int g110_input_setkeycode(struct input_dev *dev,
 
 	spin_unlock(&data->lock);
 
-	return 0;
+	return LED_OFF;
 }
 
 
@@ -892,7 +872,6 @@ static void g110_raw_event_process_input(struct hid_device *hdev,
 	 * the remainder of the key data. That way the new keymap will
 	 * be loaded if there is a keymap switch.
 	 */
-/*
 	if (unlikely(data->keymap_switching)) {
 		if (data->curkeymap != 0 && raw_data[2] & 0x10)
 			g110_set_keymap_index(hdev, 0);
@@ -901,7 +880,7 @@ static void g110_raw_event_process_input(struct hid_device *hdev,
 		else if (data->curkeymap != 2 && raw_data[2] & 0x40)
 			g110_set_keymap_index(hdev, 2);
 	}
-*/
+
 	raw_data[3] &= 0xBF; /* bit 6 is always on */
 
 	for (i = 0, mask = 0x01; i < 8; i++, mask <<= 1) {
@@ -910,15 +889,17 @@ static void g110_raw_event_process_input(struct hid_device *hdev,
 		value = raw_data[1] & mask;
 		g110_handle_key_event(data, idev, scancode, value);
 
-		/* Keys G9 through G16 */
+		/* Keys G9 through MR */
 		scancode = i + 8;
 		value = raw_data[2] & mask;
 		g110_handle_key_event(data, idev, scancode, value);
 
-		/* Keys G17 through G22 */
-		scancode = i + 16;
-		value = raw_data[3] & mask;
-		g110_handle_key_event(data, idev, scancode, value);
+		/* Key Light Only */
+		if(i == 0) {
+			scancode = i + 16;
+			value = raw_data[3] & mask;
+			g110_handle_key_event(data, idev, scancode, value);
+		}
 
 	}
 

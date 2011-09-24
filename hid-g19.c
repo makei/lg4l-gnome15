@@ -136,16 +136,11 @@ struct g19_data {
  * LIGHT      19
  */
 static const unsigned int g19_default_key_map[G19_KEYS] = {
-/*
   KEY_F1, KEY_F2, KEY_F3, KEY_F4,
   KEY_F5, KEY_F6, KEY_F7, KEY_F8,
   KEY_F9, KEY_F10, KEY_F11, KEY_F12,
-*/
-  KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
-  KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
-  KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
   /* M1, M2, M3, MR */
-  KEY_F21, KEY_F22, KEY_F23, KEY_F24,
+  KEY_PROG1, KEY_PROG2, KEY_PROG3, KEY_RECORD ,
   KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_KBDILLUMTOGGLE,
   KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
 
@@ -216,14 +211,14 @@ static void g19_screen_bl_send(struct hid_device *hdev)
 	struct g19_data *data = hid_get_g19data(hdev);
 	// From PylibG19
 	data->screen_bl_report->field[0]->value[0] = data->screen_bl;
-	data->screen_bl_report->field[0]->value[1] = 0xe2;
-	data->screen_bl_report->field[0]->value[2] = 0x12;
-	data->screen_bl_report->field[0]->value[3] = 0x00;
-	data->screen_bl_report->field[0]->value[4] = 0x8c;
-	data->screen_bl_report->field[0]->value[5] = 0x11;
-	data->screen_bl_report->field[0]->value[6] = 0x00;
-	data->screen_bl_report->field[0]->value[7] = 0x10;
-	data->screen_bl_report->field[0]->value[8] = 0x00;
+//	data->screen_bl_report->field[0]->value[1] = 0xe2;
+//	data->screen_bl_report->field[0]->value[2] = 0x12;
+//	data->screen_bl_report->field[0]->value[3] = 0x00;
+//	data->screen_bl_report->field[0]->value[4] = 0x8c;
+//	data->screen_bl_report->field[0]->value[5] = 0x11;
+//	data->screen_bl_report->field[0]->value[6] = 0x00;
+//	data->screen_bl_report->field[0]->value[7] = 0x10;
+//	data->screen_bl_report->field[0]->value[8] = 0x00;
 	usbhid_submit_report(hdev, data->screen_bl_report, USB_DIR_OUT);
 }
 
@@ -300,17 +295,12 @@ static void g19_screen_bl_set(struct led_classdev *led_cdev,
 	/* Get the device associated with the led */
 	dev = led_cdev->dev->parent;
 	// TEMPORARY
-	dev_info(dev, G19_NAME " in set brightness");
 
 	/* Get the hid associated with the device */
 	hdev = container_of(dev, struct hid_device, dev);
 
 	/* Get the underlying data value */
-	// TEMPORARY
-	dev_info(dev, G19_NAME " getting data");
 	data = hid_get_g19data(hdev);
-	// TEMPORARY
-	dev_info(dev, G19_NAME " got data");
 
 
 //    data = [val, 0xe2, 0x12, 0x00, 0x8c, 0x11, 0x00, 0x10, 0x00]
@@ -325,9 +315,7 @@ static void g19_screen_bl_set(struct led_classdev *led_cdev,
 		if (value > 100)
 			value = 100;
 		// TEMPORARY
-		dev_info(dev, G19_NAME " setting brightness: %d", value);
 		data->screen_bl = value;
-		dev_info(dev, G19_NAME " set brightness: %d", value);
 		g19_screen_bl_send(hdev);
 	} else
 		dev_info(dev, G19_NAME " error retrieving LED brightness\n");
@@ -959,10 +947,12 @@ static void g19_handle_key_event(struct g19_data *data,
 
 	/* Only report mapped keys */
 	if (keycode != KEY_RESERVED) {
+		dev_warn(&idev->dev, G19_NAME " sending non-reserved key: %d / %d", keycode, value);
 		input_report_key(idev, keycode, value);
 	}
 	/* Or report MSC_SCAN on keypress of an unmapped key */
 	else if (data->scancode_state[scancode] == 0 && value) {
+		dev_warn(&idev->dev, G19_NAME " sending non-reserved key: %d / %d", keycode, value);
 		input_event(idev, EV_MSC, MSC_SCAN, scancode);
 	}
 
