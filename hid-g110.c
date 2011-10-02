@@ -867,9 +867,6 @@ static void g110_raw_event_process_input(struct hid_device *hdev,
 	int i;
 	int mask;
 
-	if(raw_data[0] > 0 || raw_data[1] > 0 || raw_data[2] > 0 || raw_data[3] > 0)
-		dev_warn(&idev->dev, G110_NAME " raw input: %d / %d / % d / %d", raw_data[0], raw_data[1], raw_data[2], raw_data[3]);
-
 	/*
 	 * We'll check for the M* keys being pressed before processing
 	 * the remainder of the key data. That way the new keymap will
