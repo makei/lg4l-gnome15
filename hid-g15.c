@@ -1401,12 +1401,6 @@ static void g15_remove(struct hid_device *hdev)
 	struct g15_data *data;
 	int i;
 
-	hdev->ll_driver->close(hdev);
-
-	hid_hw_stop(hdev);
-
-	sysfs_remove_group(&(hdev->dev.kobj), &g15_attr_group);
-
 	/* Get the internal g15 data buffer */
 	data = hid_get_drvdata(hdev);
 
@@ -1422,6 +1416,12 @@ static void g15_remove(struct hid_device *hdev)
 	}
 
 	gfb_remove(data->gfb_data);
+
+	hdev->ll_driver->close(hdev);
+
+	hid_hw_stop(hdev);
+
+	sysfs_remove_group(&(hdev->dev.kobj), &g15_attr_group);
 
 	/* Finally, clean up the g15 data itself */
 	kfree(data);

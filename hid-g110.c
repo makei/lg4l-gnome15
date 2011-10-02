@@ -867,6 +867,9 @@ static void g110_raw_event_process_input(struct hid_device *hdev,
 	int i;
 	int mask;
 
+	if(raw_data[0] > 0 || raw_data[1] > 0 || raw_data[2] > 0 || raw_data[3] > 0)
+		dev_warn(&idev->dev, G110_NAME " raw input: %d / %d / % d / %d", raw_data[0], raw_data[1], raw_data[2], raw_data[3]);
+
 	/*
 	 * We'll check for the M* keys being pressed before processing
 	 * the remainder of the key data. That way the new keymap will
@@ -1340,12 +1343,6 @@ static void g110_remove(struct hid_device *hdev)
 	struct g110_data *data;
 	int i;
 
-	hdev->ll_driver->close(hdev);
-
-	hid_hw_stop(hdev);
-
-	sysfs_remove_group(&(hdev->dev.kobj), &g110_attr_group);
-
 	/* Get the internal g110 data buffer */
 	data = hid_get_drvdata(hdev);
 
@@ -1359,6 +1356,12 @@ static void g110_remove(struct hid_device *hdev)
 		kfree(data->led_cdev[i]->name);
 		kfree(data->led_cdev[i]);
 	}
+
+	hdev->ll_driver->close(hdev);
+
+	hid_hw_stop(hdev);
+
+	sysfs_remove_group(&(hdev->dev.kobj), &g110_attr_group);
 
 	usb_free_urb(data->ep1_urb);
 

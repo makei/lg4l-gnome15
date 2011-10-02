@@ -44,6 +44,7 @@
 #define G19_DEFAULT_RED (0)
 #define G19_DEFAULT_GREEN (255)
 #define G19_DEFAULT_BLUE (0)
+#define G19_DEFAULT_BRIGHTNESS (80)
 
 #define LED_COUNT 8
 /* LED array indices */
@@ -78,7 +79,6 @@
 struct g19_data {
 	/* HID reports */
 	struct hid_device *hdev;
-	struct hid_report *screen_bl_report;
 	struct hid_report *backlight_report;
 	struct hid_report *start_input_report;
 	struct hid_report *feature_report_4;
@@ -208,18 +208,33 @@ static void g19_led_send(struct hid_device *hdev)
 
 static void g19_screen_bl_send(struct hid_device *hdev)
 {
+	struct usb_interface *intf;
+	struct usb_device *usb_dev;
 	struct g19_data *data = hid_get_g19data(hdev);
-	// From PylibG19
-	data->screen_bl_report->field[0]->value[0] = data->screen_bl;
-//	data->screen_bl_report->field[0]->value[1] = 0xe2;
-//	data->screen_bl_report->field[0]->value[2] = 0x12;
-//	data->screen_bl_report->field[0]->value[3] = 0x00;
-//	data->screen_bl_report->field[0]->value[4] = 0x8c;
-//	data->screen_bl_report->field[0]->value[5] = 0x11;
-//	data->screen_bl_report->field[0]->value[6] = 0x00;
-//	data->screen_bl_report->field[0]->value[7] = 0x10;
-//	data->screen_bl_report->field[0]->value[8] = 0x00;
-	usbhid_submit_report(hdev, data->screen_bl_report, USB_DIR_OUT);
+	unsigned int pipe;
+	int i = 0;
+
+	unsigned char cp[9];
+	cp[0] = data->screen_bl;
+	cp[1] = 0xe2;
+	cp[2] = 0x12;
+	cp[3] = 0x00;
+	cp[4] = 0x8c;
+	cp[5] = 0x11;
+	cp[6] = 0x00;
+	cp[7] = 0x10;
+	cp[8] = 0x00;
+
+	intf = to_usb_interface(hdev->dev.parent);
+	usb_dev = interface_to_usbdev(intf);
+	pipe = usb_sndctrlpipe(usb_dev, 0x00);
+	i = usb_control_msg(usb_dev, pipe, 0x0a,
+			USB_TYPE_VENDOR | USB_RECIP_INTERFACE, 0, 0, cp, sizeof(cp),
+			1 * HZ);
+	if (i < 0) {
+		dev_warn(&hdev->dev, G19_NAME " error setting LCD backlight level %d\n",
+				i);
+	}
 }
 
 static void g19_rgb_send(struct hid_device *hdev)
@@ -947,12 +962,10 @@ static void g19_handle_key_event(struct g19_data *data,
 
 	/* Only report mapped keys */
 	if (keycode != KEY_RESERVED) {
-		dev_warn(&idev->dev, G19_NAME " sending non-reserved key: %d / %d", keycode, value);
 		input_report_key(idev, keycode, value);
 	}
 	/* Or report MSC_SCAN on keypress of an unmapped key */
 	else if (data->scancode_state[scancode] == 0 && value) {
-		dev_warn(&idev->dev, G19_NAME " sending non-reserved key: %d / %d", keycode, value);
 		input_event(idev, EV_MSC, MSC_SCAN, scancode);
 	}
 
@@ -1261,9 +1274,6 @@ static int g19_probe(struct hid_device *hdev,
 		case 0x07:
 			data->backlight_report = report;
 			break;
-		case 0x08:
-			data->screen_bl_report = report;
-			break;
 		default:
 			break;
 		}
@@ -1393,6 +1403,9 @@ static int g19_probe(struct hid_device *hdev,
 	data->rgb[2] = G19_DEFAULT_BLUE;
 	g19_rgb_send(hdev);
 
+	data->screen_bl = G19_DEFAULT_BRIGHTNESS;
+	g19_screen_bl_send(hdev);
+
 	/*
 	 * Send the finalize report, then follow with the input report to trigger
 	 * report 6 and wait for us to get a response.
@@ -1464,12 +1477,6 @@ static void g19_remove(struct hid_device *hdev)
 	struct g19_data *data;
 	int i;
 
-	hdev->ll_driver->close(hdev);
-
-	hid_hw_stop(hdev);
-
-	sysfs_remove_group(&(hdev->dev.kobj), &g19_attr_group);
-
 	/* Get the internal g19 data buffer */
 	data = hid_get_drvdata(hdev);
 
@@ -1486,8 +1493,13 @@ static void g19_remove(struct hid_device *hdev)
 
 	gfb_remove(data->gfb_data);
 
-	usb_free_urb(data->ep1_urb);
+	hdev->ll_driver->close(hdev);
 
+	hid_hw_stop(hdev);
+
+	sysfs_remove_group(&(hdev->dev.kobj), &g19_attr_group);
+
+	usb_free_urb(data->ep1_urb);
 
 	/* Finally, clean up the g19 data itself */
 	kfree(data);

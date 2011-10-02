@@ -1369,12 +1369,6 @@ static void g13_remove(struct hid_device *hdev)
 	struct g13_data *data;
 	int i;
 
-	hdev->ll_driver->close(hdev);
-
-	hid_hw_stop(hdev);
-
-	sysfs_remove_group(&(hdev->dev.kobj), &g13_attr_group);
-
 	/* Get the internal g13 data buffer */
 	data = hid_get_drvdata(hdev);
 
@@ -1390,6 +1384,29 @@ static void g13_remove(struct hid_device *hdev)
 	}
 
 	gfb_remove(data->gfb_data);
+
+
+	hdev->ll_driver->close(hdev);
+
+	hid_hw_stop(hdev);
+
+	sysfs_remove_group(&(hdev->dev.kobj), &g13_attr_group);
+
+//	/* Get the internal g13 data buffer */
+//	data = hid_get_drvdata(hdev);
+//
+//	input_unregister_device(data->input_dev);
+//
+//	kfree(data->name);
+//
+//	/* Clean up the leds */
+//	for (i = 0; i < LED_COUNT; i++) {
+//		led_classdev_unregister(data->led_cdev[i]);
+//		kfree(data->led_cdev[i]->name);
+//		kfree(data->led_cdev[i]);
+//	}
+//
+//	gfb_remove(data->gfb_data);
 
 	/* Finally, clean up the g13 data itself */
 	kfree(data);
