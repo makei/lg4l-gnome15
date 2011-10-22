@@ -3,7 +3,7 @@
 # run me as root
 
 # first unbind them all
-for dev in `ls /sys/bus/hid/drivers/generic-usb/ | egrep '046D:(C21C|C222|C229|C22B)'`
+for dev in `ls /sys/bus/hid/drivers/generic-usb/ | egrep '046D:(C21C|C222|C229|C22B|C227|C22D|C22E)'`
 do echo -n $dev > /sys/bus/hid/drivers/generic-usb/unbind
 done
 
@@ -18,6 +18,11 @@ do
    echo -n $dev > /sys/bus/hid/drivers/hid-g15/bind
 done
 
+for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C227'`
+do 
+   echo -n $dev > /sys/bus/hid/drivers/hid-g15v2/bind
+done
+
 for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C229'`
 do 
    echo -n $dev > /sys/bus/hid/drivers/hid-g19/bind
@@ -26,4 +31,9 @@ done
 for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C22B'`
 do 
    echo -n $dev > /sys/bus/hid/drivers/hid-g110/bind
+done
+
+for dev in `ls /sys/bus/hid/devices/ | egrep '046D:(C22D|C22E)'`
+do 
+   echo -n $dev > /sys/bus/hid/drivers/hid-g510/bind
 done

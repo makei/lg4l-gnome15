@@ -34,10 +34,10 @@
 
 #include "hid-gfb.h"
 
-#define G15_NAME "Logitech G15"
+#define G15_NAME "Logitech G15v2"
 
 /* Key defines */
-#define G15_KEYS 64
+#define G15_KEYS 16
 #define G15_KEYMAP_SIZE (G15_KEYS*3)
 
 /* Backlight defaults */
@@ -118,103 +118,24 @@ struct g15_data {
 
 /*
  * Keymap array indices
- *
- * Key    Byte  Mask Index
- * -----  ----  ---- -----
- * G1     0     0x01  0
- * G13    0     0x04  2
- * LIT    0     0x80  7
- * G7     1     0x01  8
- * G2     1     0x02  9
- * G14    1     0x08 11
- * S2     1     0x80 15
- * G8     2     0x02 17
- * G3     2     0x04 18
- * G15    2     0x10 20
- * S3     2     0x80 23
- * G9     3     0x04 26
- * G4     3     0x08 27
- * G16    3     0x20 29
- * S4     3     0x80 31
- * G10    4     0x08 35
- * G5     4     0x10 36
- * G17    4     0x40 38
- * S5     4     0x80 39
- * M1     5     0x01 40
- * G11    5     0x10 44
- * G6     5     0x20 45
- * M2     6     0x02 49
- * G12    6     0x20 53
- * MR     6     0x40 54
- * M3     7     0x04 58
- * G18    7     0x40 62
- * S1     7     0x80 63
  */
 static const unsigned int g15_default_key_map[G15_KEYS] = {
-KEY_F1, /* G1 */
-KEY_UNKNOWN,
-KEY_F13, /* G13 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_KBDILLUMTOGGLE, /* LIGHT */
-KEY_F7, /* G7 */
-KEY_F2, /* G2 */
-KEY_UNKNOWN,
-KEY_F14, /* G14 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_LEFT, /* S2 */
-KEY_UNKNOWN,
-KEY_F8, /* G8 */
-KEY_F3, /* G3 */
-KEY_UNKNOWN,
-KEY_F15, /* G15 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UP, /* S3 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_F9, /* G9 */
-KEY_F4, /* G4 */
-KEY_UNKNOWN,
-KEY_F16, /* G16 */
-KEY_UNKNOWN,
-KEY_DOWN, /* S4 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_F10, /* G10 */
-KEY_F5, /* G5 */
-KEY_UNKNOWN,
-KEY_F17, /* G17 */
-KEY_RIGHT, /* S5 */
-KEY_PROG1, /* M1 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_F11, /* G11 */
-KEY_F6, /* G6 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_PROG2, /* M2 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_F12, /* G12 */
-KEY_RECORD, /* MR */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
+KEY_F1,
+KEY_F2,
+KEY_F3,
+KEY_F4,
+KEY_F5,
+KEY_F6,
+KEY_PROG1,
+KEY_PROG2,
+KEY_KBDILLUMTOGGLE, /* Light */
+KEY_LEFT, /* L2 */
+KEY_UP, /* L3 */
+KEY_DOWN, /* L4 */
+KEY_RIGHT, /* L5 */
 KEY_PROG3, /* M3 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_F18, /* G18 */
-KEY_OK, /* S1 */
+KEY_RECORD, /* MR */
+KEY_OK /* L1 */
 };
 
 static DEVICE_ATTR(fb_node, 0444, gfb_fb_node_show, NULL);
@@ -944,15 +865,13 @@ static void g15_raw_event_process_input(struct hid_device *hdev,
 	 * be loaded if there is a keymap switch.
 	 */
 	if (unlikely(data->keymap_switching)) {
-		if (data->curkeymap != 0 && raw_data[5] & 0x01)
+		if (data->curkeymap != 0 && raw_data[1] & 0x40)
 			g15_set_keymap_index(hdev, 0);
-		else if (data->curkeymap != 1 && raw_data[6] & 0x02)
+		else if (data->curkeymap != 1 && raw_data[1] & 0x80)
 			g15_set_keymap_index(hdev, 1);
-		else if (data->curkeymap != 2 && raw_data[7] & 0x04)
+		else if (data->curkeymap != 2 && raw_data[2] & 0x20)
 			g15_set_keymap_index(hdev, 2);
 	}
-
-	raw_data[4] &= 0xFE; /* This bit turns on and off at random */
 
 	for (i = 0, mask = 0x01; i < 8; i++, mask <<= 1) {
 		scancode = i;
@@ -961,30 +880,6 @@ static void g15_raw_event_process_input(struct hid_device *hdev,
 
 		scancode = i + 8;
 		value = raw_data[2] & mask;
-		g15_handle_key_event(data, idev, scancode, value);
-
-		scancode = i + 16;
-		value = raw_data[3] & mask;
-		g15_handle_key_event(data, idev, scancode, value);
-
-		scancode = i + 24;
-		value = raw_data[4] & mask;
-		g15_handle_key_event(data, idev, scancode, value);
-
-		scancode = i + 32;
-		value = raw_data[5] & mask;
-		g15_handle_key_event(data, idev, scancode, value);
-
-		scancode = i + 40;
-		value = raw_data[6] & mask;
-		g15_handle_key_event(data, idev, scancode, value);
-
-		scancode = i + 48;
-		value = raw_data[7] & mask;
-		g15_handle_key_event(data, idev, scancode, value);
-
-		scancode = i + 56;
-		value = raw_data[8] & mask;
 		g15_handle_key_event(data, idev, scancode, value);
 	}
 
@@ -1081,7 +976,7 @@ static int g15_probe(struct hid_device *hdev,
 	struct hid_report *report;
 	char *led_name;
 
-	dev_dbg(&hdev->dev, "Logitech G15 HID hardware probe...");
+	dev_dbg(&hdev->dev, "Logitech G15v2 HID hardware probe...");
 
 	/* Get the usb device to send the start report on */
 	intf = to_usb_interface(hdev->dev.parent);
@@ -1093,7 +988,7 @@ static int g15_probe(struct hid_device *hdev,
 	 */
 	data = kzalloc(sizeof(struct g15_data), GFP_KERNEL);
 	if (data == NULL) {
-		dev_err(&hdev->dev, "can't allocate space for Logitech G15 device attributes\n");
+		dev_err(&hdev->dev, "can't allocate space for Logitech G15v2 device attributes\n");
 		error = -ENOMEM;
 		goto err_no_cleanup;
 	}
@@ -1244,19 +1139,19 @@ static int g15_probe(struct hid_device *hdev,
 		case 0:
 		case 1:
 		case 2:
-			sprintf(led_name, "g15_%d:orange:m%d", hdev->minor, i+1);
+			sprintf(led_name, "g15v2_%d:red:m%d", hdev->minor, i+1);
 			break;
 		case 3:
-			sprintf(led_name, "g15_%d:blue:mr", hdev->minor);
+			sprintf(led_name, "g15v2_%d:blue:mr", hdev->minor);
 			break;
 		case 4:
-			sprintf(led_name, "g15_%d:blue:keys", hdev->minor);
+			sprintf(led_name, "g15v2_%d:orange:keys", hdev->minor);
 			break;
 		case 5:
-			sprintf(led_name, "g15_%d:white:screen", hdev->minor);
+			sprintf(led_name, "g15v2_%d:white:screen", hdev->minor);
 			break;
 		case 6:
-			sprintf(led_name, "g15_%d:contrast:screen", hdev->minor);
+			sprintf(led_name, "g15v2_%d:contrast:screen", hdev->minor);
 			break;
 		}
 		data->led_cdev[i]->name = led_name;
@@ -1278,7 +1173,7 @@ static int g15_probe(struct hid_device *hdev,
 		goto err_cleanup_registered_leds;
 	}
 
-	dbg_hid("Waiting for G15 to activate\n");
+	dbg_hid("Waiting for G15v2 to activate\n");
 
 	/* Add the sysfs attributes */
 	error = sysfs_create_group(&(hdev->dev.kobj), &g15_attr_group);
@@ -1351,7 +1246,7 @@ static int g15_probe(struct hid_device *hdev,
 
 	g15_set_keymap_switching(hdev, 1);
 
-	dbg_hid("G15 activated and initialized\n");
+	dbg_hid("G15v2 activated and initialized\n");
 
 	/* Everything went well */
 	return 0;
@@ -1428,14 +1323,14 @@ static void g15_post_reset_start(struct hid_device *hdev)
 }
 
 static const struct hid_device_id g15_devices[] = {
-	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G15_LCD)
+	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G15V2_LCD)
 	},
 	{ }
 };
 MODULE_DEVICE_TABLE(hid, g15_devices);
 
 static struct hid_driver g15_driver = {
-	.name			= "hid-g15",
+	.name			= "hid-g15v2",
 	.id_table		= g15_devices,
 	.probe			= g15_probe,
 	.remove			= g15_remove,
@@ -1454,6 +1349,6 @@ static void __exit g15_exit(void)
 
 module_init(g15_init);
 module_exit(g15_exit);
-MODULE_DESCRIPTION("Logitech G15 HID Driver");
+MODULE_DESCRIPTION("Logitech G15v2 HID Driver");
 MODULE_AUTHOR("Alistair Buxton (a.j.buxton@gmail.com)");
 MODULE_LICENSE("GPL");

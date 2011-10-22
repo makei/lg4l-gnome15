@@ -142,6 +142,8 @@ static const unsigned int g19_default_key_map[G19_KEYS] = {
   /* M1, M2, M3, MR */
   KEY_PROG1, KEY_PROG2, KEY_PROG3, KEY_RECORD ,
   KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_KBDILLUMTOGGLE,
+
+
   KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
 
 /* Screen keymap
@@ -156,6 +158,7 @@ static const unsigned int g19_default_key_map[G19_KEYS] = {
  * Left  5
  * Down  6
  * Up    7
+ *
  */
 
 
@@ -951,9 +954,11 @@ static void g19_handle_key_event(struct g19_data *data,
 	int keycode;
 	int offset;
 
+
 	offset = G19_KEYS * data->curkeymap;
 
 	error = g19_input_get_keycode(idev, scancode+offset, &keycode);
+
 
 	if (unlikely(error)) {
 		dev_warn(&idev->dev, G19_NAME " error in input_get_keycode(): scancode=%d\n", scancode);
@@ -1003,7 +1008,7 @@ static void g19_raw_event_process_input(struct hid_device *hdev,
 		value = raw_data[1] & mask;
 		g19_handle_key_event(data, idev, scancode, value);
 
-		/* Keys G9 through G16 */
+		/* Keys G9 through G12, M1 through MR */
 		scancode = i + 8;
 		value = raw_data[2] & mask;
 		g19_handle_key_event(data, idev, scancode, value);
