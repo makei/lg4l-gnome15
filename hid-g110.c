@@ -284,7 +284,7 @@ static void g110_rgb_send(struct hid_device *hdev)
     }
     // If the red value is higher
     else {
-        data->backlight_report->field[0]->value[0] = 0x00 - ( 0x80 * data->backlight_rb[1] ) / data->backlight_rb[0];
+        data->backlight_report->field[0]->value[0] = ( 0x80 * data->backlight_rb[1] ) / data->backlight_rb[0];
         data->backlight_report->field[1]->value[0] = data->backlight_rb[0]>>4;
     }
 
