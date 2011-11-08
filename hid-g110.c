@@ -34,7 +34,7 @@
 #define G110_NAME "Logitech G110"
 
 /* Key defines */
-#define G110_KEYS 32
+#define G110_KEYS 17
 #define G110_KEYMAP_SIZE (G110_KEYS*3)
 
 /* Backlight defaults */
@@ -124,36 +124,12 @@ struct g110_data {
  * LIGHT      19
  */
 static const unsigned int g110_default_key_map[G110_KEYS] = {
-/*
   KEY_F1, KEY_F2, KEY_F3, KEY_F4,
   KEY_F5, KEY_F6, KEY_F7, KEY_F8,
   KEY_F9, KEY_F10, KEY_F11, KEY_F12,
-*/
-  KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
-  KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
-  KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
   /* M1, M2, M3, MR */
-  KEY_F21, KEY_F22, KEY_F23, KEY_F24,
-  KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_KBDILLUMTOGGLE,
-  KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
-
-/* Screen keymap
- *
- * Key   Index
- * ----- -----
- * Gear  0
- * Back  1
- * Menu  2
- * OK    3
- * Right 4
- * Left  5
- * Down  6
- * Up    7
- */
-
-
-  KEY_FORWARD, KEY_BACK, KEY_MENU, KEY_OK,
-  KEY_RIGHT, KEY_LEFT, KEY_DOWN, KEY_UP,
+  KEY_PROG1, KEY_PROG2, KEY_PROG3, KEY_RECORD,
+  KEY_KBDILLUMTOGGLE
 };
 
 static int g110_input_get_keycode(struct input_dev * dev,
@@ -168,7 +144,7 @@ static int g110_input_get_keycode(struct input_dev * dev,
 		.flags    = 0,
 		.len      = sizeof(scancode),
 		.index    = scancode,
-		.scancode = scancode,
+		.scancode = { scancode },
 	};
 	
 	retval   = input_get_keycode(dev, &ke);
@@ -308,7 +284,7 @@ static void g110_rgb_send(struct hid_device *hdev)
     }
     // If the red value is higher
     else {
-        data->backlight_report->field[0]->value[0] = 0x00 - ( 0x80 * data->backlight_rb[1] ) / data->backlight_rb[0];
+        data->backlight_report->field[0]->value[0] = ( 0x80 * data->backlight_rb[1] ) / data->backlight_rb[0];
         data->backlight_report->field[1]->value[0] = data->backlight_rb[0]>>4;
     }
 
@@ -316,7 +292,7 @@ static void g110_rgb_send(struct hid_device *hdev)
 }
 
 static void g110_led_bl_brightness_set(struct led_classdev *led_cdev,
-				      int value)
+										enum led_brightness value)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -339,11 +315,12 @@ static void g110_led_bl_brightness_set(struct led_classdev *led_cdev,
 	g110_rgb_send(hdev);
 }
 
-static int g110_led_bl_brightness_get(struct led_classdev *led_cdev)
+static enum led_brightness g110_led_bl_brightness_get(struct led_classdev *led_cdev)
 {
 	struct device *dev;
 	struct hid_device *hdev;
 	struct g110_data *data;
+	int value = 0;
 
 	/* Get the device associated with the led */
 	dev = led_cdev->dev->parent;
@@ -355,12 +332,15 @@ static int g110_led_bl_brightness_get(struct led_classdev *led_cdev)
 	data = hid_get_g110data(hdev);
 
 	if (led_cdev == data->led_cdev[G110_LED_BL_R])
-		return data->backlight_rb[0];
+		value = data->backlight_rb[0];
 	else if (led_cdev == data->led_cdev[G110_LED_BL_B])
-		return data->backlight_rb[1];
+		value = data->backlight_rb[1];
 	else
 		dev_info(dev, G110_NAME " error retrieving LED brightness\n");
-	return 0;
+
+	if (value)
+		return LED_FULL;
+	return LED_OFF;
 }
 
 
@@ -391,11 +371,10 @@ static const struct led_classdev g110_led_cdevs[6] = {
 	},
 };
 
-static int g110_input_setkeycode(struct input_dev *dev,
+static enum led_brightness g110_input_setkeycode(struct input_dev *dev,
 				int scancode,
 				int keycode)
 {
-        unsigned long irq_flags;
 	int old_keycode;
 	int i;
 	struct g110_data *data = input_get_g110data(dev);
@@ -403,7 +382,7 @@ static int g110_input_setkeycode(struct input_dev *dev,
 	if (scancode >= dev->keycodemax)
 		return -EINVAL;
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 
 	old_keycode = data->keycode[scancode];
 	data->keycode[scancode] = keycode;
@@ -418,11 +397,29 @@ static int g110_input_setkeycode(struct input_dev *dev,
 		}
 	}
 
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
+
+	return LED_OFF;
+}
+
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+static int g110_input_getkeycode(struct input_dev *dev,
+								struct input_keymap_entry *ke)
+{
+	struct g110_data *data = input_get_g110data(dev);
+
+	if (!dev->keycodesize)
+		return -EINVAL;
+
+	if (*ke->scancode >= dev->keycodemax)
+		return -EINVAL;
+
+	ke->keycode = data->keycode[*ke->scancode];
 
 	return 0;
 }
-
+#else
 static int g110_input_getkeycode(struct input_dev *dev,
 				int scancode,
 				int *keycode)
@@ -439,6 +436,7 @@ static int g110_input_getkeycode(struct input_dev *dev,
 
 	return 0;
 }
+#endif
 
 
 /*
@@ -720,7 +718,6 @@ static ssize_t g110_name_show(struct device *dev,
 			     struct device_attribute *attr,
 			     char *buf)
 {
-        unsigned long irq_flags;
 	struct g110_data *data = dev_get_drvdata(dev);
 	int result;
 
@@ -729,9 +726,9 @@ static ssize_t g110_name_show(struct device *dev,
 		return 1;
 	}
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 	result = sprintf(buf, "%s", data->name);
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	return result;
 }
@@ -740,12 +737,11 @@ static ssize_t g110_name_store(struct device *dev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
-        unsigned long irq_flags;
 	struct g110_data *data = dev_get_drvdata(dev);
 	size_t limit = count;
 	char *end;
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 
 	if (data->name != NULL) {
 		kfree(data->name);
@@ -766,7 +762,7 @@ static ssize_t g110_name_store(struct device *dev,
 		strncpy(data->name, buf, limit);
 	}
 
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	return count;
 }
@@ -876,7 +872,6 @@ static void g110_raw_event_process_input(struct hid_device *hdev,
 	 * the remainder of the key data. That way the new keymap will
 	 * be loaded if there is a keymap switch.
 	 */
-/*
 	if (unlikely(data->keymap_switching)) {
 		if (data->curkeymap != 0 && raw_data[2] & 0x10)
 			g110_set_keymap_index(hdev, 0);
@@ -885,7 +880,7 @@ static void g110_raw_event_process_input(struct hid_device *hdev,
 		else if (data->curkeymap != 2 && raw_data[2] & 0x40)
 			g110_set_keymap_index(hdev, 2);
 	}
-*/
+
 	raw_data[3] &= 0xBF; /* bit 6 is always on */
 
 	for (i = 0, mask = 0x01; i < 8; i++, mask <<= 1) {
@@ -894,15 +889,17 @@ static void g110_raw_event_process_input(struct hid_device *hdev,
 		value = raw_data[1] & mask;
 		g110_handle_key_event(data, idev, scancode, value);
 
-		/* Keys G9 through G16 */
+		/* Keys G9 through MR */
 		scancode = i + 8;
 		value = raw_data[2] & mask;
 		g110_handle_key_event(data, idev, scancode, value);
 
-		/* Keys G17 through G22 */
-		scancode = i + 16;
-		value = raw_data[3] & mask;
-		g110_handle_key_event(data, idev, scancode, value);
+		/* Key Light Only */
+		if(i == 0) {
+			scancode = i + 16;
+			value = raw_data[3] & mask;
+			g110_handle_key_event(data, idev, scancode, value);
+		}
 
 	}
 
@@ -913,21 +910,20 @@ static int g110_raw_event(struct hid_device *hdev,
 			 struct hid_report *report,
 			 u8 *raw_data, int size)
 {
-        unsigned long irq_flags;
 	/*
-	 * On initialization receive a 258 byte message with
-	 * data = 6 0 255 255 255 255 255 255 255 255 ...
-	 */
+	* On initialization receive a 258 byte message with
+	* data = 6 0 255 255 255 255 255 255 255 255 ...
+	*/
 	struct g110_data *data;
 	data = dev_get_drvdata(&hdev->dev);
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 
 	if (unlikely(data->need_reset)) {
 		g110_rgb_send(hdev);
 		g110_led_send(hdev);
 		data->need_reset = 0;
-		spin_unlock_irqrestore(&data->lock, irq_flags);
+		spin_unlock(&data->lock);
 		return 1;
 	}
 
@@ -957,11 +953,11 @@ static int g110_raw_event(struct hid_device *hdev,
 		    data->ready_stages == G110_READY_STAGE_3)
 			complete_all(&data->ready);
 
-		spin_unlock_irqrestore(&data->lock, irq_flags);
+		spin_unlock(&data->lock);
 		return 1;
 	}
 
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	if (likely(report->id == 2)) {
 		g110_raw_event_process_input(hdev, data, raw_data);
@@ -1034,7 +1030,6 @@ static int g110_ep1_read(struct hid_device *hdev)
 static int g110_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
 {
-        unsigned long irq_flags;
 	int error;
 	struct g110_data *data;
 	int i;
@@ -1236,7 +1231,7 @@ static int g110_probe(struct hid_device *hdev,
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 	if (data->ready_stages != G110_READY_STAGE_1) {
 		dev_warn(&hdev->dev, G110_NAME " hasn't completed stage 1 yet, forging ahead with initialization\n");
 		/* Force the stage */
@@ -1244,7 +1239,7 @@ static int g110_probe(struct hid_device *hdev,
 	}
 	init_completion(&data->ready);
 	data->ready_stages |= G110_READY_SUBSTAGE_4;
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	/*
 	 * Send the init report, then follow with the input report to trigger
@@ -1255,7 +1250,7 @@ static int g110_probe(struct hid_device *hdev,
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 	if (data->ready_stages != G110_READY_STAGE_2) {
 		dev_warn(&hdev->dev, G110_NAME " hasn't completed stage 2 yet, forging ahead with initialization\n");
 		/* Force the stage */
@@ -1263,7 +1258,7 @@ static int g110_probe(struct hid_device *hdev,
 	}
 	init_completion(&data->ready);
 	data->ready_stages |= G110_READY_SUBSTAGE_6;
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	/*
 	 * Clear the LEDs
@@ -1284,7 +1279,7 @@ static int g110_probe(struct hid_device *hdev,
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 
 	if (data->ready_stages != G110_READY_STAGE_3) {
 		dev_warn(&hdev->dev, G110_NAME " hasn't completed stage 3 yet, forging ahead with initialization\n");
@@ -1294,7 +1289,7 @@ static int g110_probe(struct hid_device *hdev,
 		dbg_hid(G110_NAME " stage 3 complete\n");
 	}
 
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 
 	g110_set_keymap_switching(hdev, 1);
 
@@ -1345,12 +1340,6 @@ static void g110_remove(struct hid_device *hdev)
 	struct g110_data *data;
 	int i;
 
-	hdev->ll_driver->close(hdev);
-
-	hid_hw_stop(hdev);
-
-	sysfs_remove_group(&(hdev->dev.kobj), &g110_attr_group);
-
 	/* Get the internal g110 data buffer */
 	data = hid_get_drvdata(hdev);
 
@@ -1365,6 +1354,12 @@ static void g110_remove(struct hid_device *hdev)
 		kfree(data->led_cdev[i]);
 	}
 
+	hdev->ll_driver->close(hdev);
+
+	hid_hw_stop(hdev);
+
+	sysfs_remove_group(&(hdev->dev.kobj), &g110_attr_group);
+
 	usb_free_urb(data->ep1_urb);
 
 
@@ -1373,13 +1368,12 @@ static void g110_remove(struct hid_device *hdev)
 }
 
 static void g110_post_reset_start(struct hid_device *hdev)
-{	
-        unsigned long irq_flags;
-        struct g110_data *data = hid_get_g110data(hdev);
+{
+	struct g110_data *data = hid_get_g110data(hdev);
 
-	spin_lock_irqsave(&data->lock, irq_flags);
+	spin_lock(&data->lock);
 	data->need_reset = 1;
-	spin_unlock_irqrestore(&data->lock, irq_flags);
+	spin_unlock(&data->lock);
 }
 
 static const struct hid_device_id g110_devices[] = {

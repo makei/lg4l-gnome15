@@ -151,70 +151,70 @@ struct g15_data {
  * S1     7     0x80 63
  */
 static const unsigned int g15_default_key_map[G15_KEYS] = {
-KEY_RESERVED,
+KEY_F1, /* G1 */
 KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_F, /* LIGHT */
-KEY_RESERVED,
-KEY_RESERVED,
-KEY_UNKNOWN,
-KEY_RESERVED,
+KEY_F13, /* G13 */
 KEY_UNKNOWN,
 KEY_UNKNOWN,
 KEY_UNKNOWN,
-KEY_B, /* S2 */
 KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_RESERVED,
+KEY_KBDILLUMTOGGLE, /* LIGHT */
+KEY_F7, /* G7 */
+KEY_F2, /* G2 */
 KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_C, /* S3 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_RESERVED,
-KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_UNKNOWN,
-KEY_D, /* S4 */
+KEY_F14, /* G14 */
 KEY_UNKNOWN,
 KEY_UNKNOWN,
 KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_RESERVED,
+KEY_LEFT, /* S2 */
 KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_E, /* S5 */
-KEY_F21, /* M1 */
+KEY_F8, /* G8 */
+KEY_F3, /* G3 */
 KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_RESERVED,
+KEY_F15, /* G15 */
 KEY_UNKNOWN,
 KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_F22, /* M2 */
-KEY_UNKNOWN,
+KEY_UP, /* S3 */
 KEY_UNKNOWN,
 KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_F24, /* MR */
+KEY_F9, /* G9 */
+KEY_F4, /* G4 */
+KEY_UNKNOWN,
+KEY_F16, /* G16 */
+KEY_UNKNOWN,
+KEY_DOWN, /* S4 */
 KEY_UNKNOWN,
 KEY_UNKNOWN,
 KEY_UNKNOWN,
-KEY_F23, /* M3 */
+KEY_F10, /* G10 */
+KEY_F5, /* G5 */
+KEY_UNKNOWN,
+KEY_F17, /* G17 */
+KEY_RIGHT, /* S5 */
+KEY_PROG1, /* M1 */
 KEY_UNKNOWN,
 KEY_UNKNOWN,
 KEY_UNKNOWN,
-KEY_RESERVED,
-KEY_A, /* S1 */
+KEY_F11, /* G11 */
+KEY_F6, /* G6 */
+KEY_UNKNOWN,
+KEY_UNKNOWN,
+KEY_UNKNOWN,
+KEY_PROG2, /* M2 */
+KEY_UNKNOWN,
+KEY_UNKNOWN,
+KEY_UNKNOWN,
+KEY_F12, /* G12 */
+KEY_RECORD, /* MR */
+KEY_UNKNOWN,
+KEY_UNKNOWN,
+KEY_UNKNOWN,
+KEY_PROG3, /* M3 */
+KEY_UNKNOWN,
+KEY_UNKNOWN,
+KEY_UNKNOWN,
+KEY_F18, /* G18 */
+KEY_OK, /* S1 */
 };
 
 static DEVICE_ATTR(fb_node, 0444, gfb_fb_node_show, NULL);
@@ -235,7 +235,7 @@ static int g15_input_get_keycode(struct input_dev * dev,
 		.flags    = 0,
 		.len      = sizeof(scancode),
 		.index    = scancode,
-		.scancode = scancode,
+		.scancode = { scancode },
 	};
 	
 	retval   = input_get_keycode(dev, &ke);
@@ -380,7 +380,7 @@ static void g15_led_bl_set(struct led_classdev *led_cdev,
 
 }
 
-static int g15_led_bl_get(struct led_classdev *led_cdev)
+static enum led_brightness g15_led_bl_get(struct led_classdev *led_cdev)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -404,7 +404,7 @@ static int g15_led_bl_get(struct led_classdev *led_cdev)
 	else
 		dev_info(dev, G15_NAME " error retrieving LED brightness\n");
 
-	return 0;
+	return LED_OFF;
 }
 
 static const struct led_classdev g15_led_cdevs[7] = {
@@ -438,13 +438,13 @@ static const struct led_classdev g15_led_cdevs[7] = {
 	},
 };
 
-static int g15_input_setkeycode(struct input_dev *dev,
+static enum led_brightness g15_input_setkeycode(struct input_dev *dev,
 				int scancode,
 				int keycode)
 {
-        unsigned long irq_flags;
 	int old_keycode;
 	int i;
+	unsigned long irq_flags;
 	struct g15_data *data = input_get_g15data(dev);
 
 	if (scancode >= dev->keycodemax)
@@ -467,9 +467,26 @@ static int g15_input_setkeycode(struct input_dev *dev,
 
 	spin_unlock_irqrestore(&data->lock, irq_flags);
 
-	return 0;
+	return LED_OFF;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+static int g15_input_getkeycode(struct input_dev *dev,
+								struct input_keymap_entry *ke)
+{
+	struct g15_data *data = input_get_g15data(dev);
+
+	if (!dev->keycodesize)
+		return -EINVAL;
+
+	if (*ke->scancode >= dev->keycodemax)
+		return -EINVAL;
+
+	ke->keycode = data->keycode[*ke->scancode];
+
+	return 0;
+}
+#else
 static int g15_input_getkeycode(struct input_dev *dev,
 				int scancode,
 				int *keycode)
@@ -486,6 +503,7 @@ static int g15_input_getkeycode(struct input_dev *dev,
 
 	return 0;
 }
+#endif
 
 
 /*
@@ -767,7 +785,7 @@ static ssize_t g15_name_show(struct device *dev,
 			     struct device_attribute *attr,
 			     char *buf)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	struct g15_data *data = dev_get_drvdata(dev);
 	int result;
 
@@ -787,7 +805,7 @@ static ssize_t g15_name_store(struct device *dev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	struct g15_data *data = dev_get_drvdata(dev);
 	size_t limit = count;
 	char *end;
@@ -899,12 +917,14 @@ static void g15_handle_key_event(struct g15_data *data,
 	}
 
 	/* Only report mapped keys */
-	if (keycode != KEY_RESERVED)
+	if (keycode != KEY_RESERVED) {
 		input_report_key(idev, keycode, value);
+	}
 	/* Or report MSC_SCAN on keypress of an unmapped key */
-/*	else if (data->scancode_state[scancode] == 0 && value)
+	else if (data->scancode_state[scancode] == 0 && value) {
 		input_event(idev, EV_MSC, MSC_SCAN, scancode);
-*/
+	}
+
 	data->scancode_state[scancode] = value;
 }
 
@@ -923,7 +943,7 @@ static void g15_raw_event_process_input(struct hid_device *hdev,
 	 * the remainder of the key data. That way the new keymap will
 	 * be loaded if there is a keymap switch.
 	 */
-/*	if (unlikely(data->keymap_switching)) {
+	if (unlikely(data->keymap_switching)) {
 		if (data->curkeymap != 0 && raw_data[5] & 0x01)
 			g15_set_keymap_index(hdev, 0);
 		else if (data->curkeymap != 1 && raw_data[6] & 0x02)
@@ -931,7 +951,7 @@ static void g15_raw_event_process_input(struct hid_device *hdev,
 		else if (data->curkeymap != 2 && raw_data[7] & 0x04)
 			g15_set_keymap_index(hdev, 2);
 	}
-*/
+
 	raw_data[4] &= 0xFE; /* This bit turns on and off at random */
 
 	for (i = 0, mask = 0x01; i < 8; i++, mask <<= 1) {
@@ -975,12 +995,11 @@ static int g15_raw_event(struct hid_device *hdev,
 			 struct hid_report *report,
 			 u8 *raw_data, int size)
 {
-        unsigned long irq_flags;
-
 	/*
-	 * On initialization receive a 258 byte message with
-	 * data = 6 0 255 255 255 255 255 255 255 255 ...
-	 */
+	* On initialization receive a 258 byte message with
+	* data = 6 0 255 255 255 255 255 255 255 255 ...
+	*/
+	unsigned long irq_flags;
 	struct g15_data *data;
 	data = dev_get_drvdata(&hdev->dev);
 
@@ -1048,7 +1067,7 @@ static void g15_initialize_keymap(struct g15_data *data)
 static int g15_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	int error;
 	struct g15_data *data;
 	int i;
@@ -1372,12 +1391,6 @@ static void g15_remove(struct hid_device *hdev)
 	struct g15_data *data;
 	int i;
 
-	hdev->ll_driver->close(hdev);
-
-	hid_hw_stop(hdev);
-
-	sysfs_remove_group(&(hdev->dev.kobj), &g15_attr_group);
-
 	/* Get the internal g15 data buffer */
 	data = hid_get_drvdata(hdev);
 
@@ -1394,13 +1407,19 @@ static void g15_remove(struct hid_device *hdev)
 
 	gfb_remove(data->gfb_data);
 
+	hdev->ll_driver->close(hdev);
+
+	hid_hw_stop(hdev);
+
+	sysfs_remove_group(&(hdev->dev.kobj), &g15_attr_group);
+
 	/* Finally, clean up the g15 data itself */
 	kfree(data);
 }
 
 static void g15_post_reset_start(struct hid_device *hdev)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	struct g15_data *data = hid_get_g15data(hdev);
 
 	spin_lock_irqsave(&data->lock, irq_flags);
