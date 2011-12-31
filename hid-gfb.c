@@ -597,8 +597,6 @@ static struct gfb_data *gfb_probe(struct hid_device *hdev,
 
 err_cleanup_fb_deferred:
 	fb_deferred_io_cleanup(data->fb_info);
-
-err_cleanup_fb_urb:
 	usb_free_urb(data->fb_urb);
 
 err_cleanup_fb_vbitmap:

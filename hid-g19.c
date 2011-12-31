@@ -34,6 +34,12 @@
 
 #include "hid-gfb.h"
 
+#ifdef __GNUC__
+#define __UNUSED __attribute__ ((unused))
+#else
+#define __UNUSED
+#endif
+
 #define G19_NAME "Logitech G19"
 
 /* Key defines */
@@ -182,10 +188,10 @@ static int g19_input_get_keycode(struct input_dev * dev,
 	struct input_keymap_entry ke = {
 		.flags    = 0,
 		.len      = sizeof(scancode),
-		.index    = scancode,
-		.scancode = scancode,
+		.index    = scancode
 	};
 	
+	memcpy(&ke.scancode, &scancode, sizeof scancode);
 	retval   = input_get_keycode(dev, &ke);
 	*keycode = ke.keycode;
 	
@@ -302,7 +308,7 @@ static void g19_rgb_send(struct hid_device *hdev)
 }
 
 static void g19_led_bl_brightness_set(struct led_classdev *led_cdev,
-				      int value)
+				      unsigned int value)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -327,7 +333,7 @@ static void g19_led_bl_brightness_set(struct led_classdev *led_cdev,
 	g19_rgb_send(hdev);
 }
 
-static int g19_led_bl_brightness_get(struct led_classdev *led_cdev)
+static unsigned int g19_led_bl_brightness_get(struct led_classdev *led_cdev)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -389,7 +395,7 @@ static int g19_input_setkeycode(struct input_dev *dev,
 				int scancode,
 				int keycode)
 {
-  unsigned long irq_flags;
+	unsigned long irq_flags;
 	int old_keycode;
 	int i;
 	struct g19_data *data = input_get_g19data(dev);
@@ -433,7 +439,6 @@ static int g19_input_getkeycode(struct input_dev *dev,
 
 	return 0;
 }
-
 
 /*
  * The "keymap" attribute
@@ -1029,12 +1034,33 @@ static int g19_ep1_read(struct hid_device *hdev)
 	return retval;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
 
+static int g19_input_setkeycode_new(struct input_dev * dev,
+                                    const struct input_keymap_entry * ke,
+                                    unsigned int * old_keycode)
+{
+	int scancode;
+	
+	memcpy(&scancode, &ke->scancode, sizeof scancode);
+	return g19_input_setkeycode(dev, scancode, ke->keycode);
+}
+
+static int g19_input_getkeycode_new(struct input_dev * dev,
+                                    struct input_keymap_entry * ke)
+{
+	int scancode;
+	
+	memcpy(&scancode, ke->scancode, sizeof scancode);
+	return g19_input_getkeycode(dev, scancode, &ke->keycode);
+}
+
+#endif
 
 static int g19_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	int error;
 	struct g19_data *data;
 	int i;
@@ -1043,8 +1069,6 @@ static int g19_probe(struct hid_device *hdev,
 	struct usb_device *usbdev;
 	struct list_head *feature_report_list =
 		&hdev->report_enum[HID_FEATURE_REPORT].report_list;
-	struct list_head *output_report_list =
-			&hdev->report_enum[HID_OUTPUT_REPORT].report_list;
 	struct hid_report *report;
 	char *led_name;
 
@@ -1127,8 +1151,18 @@ static int g19_probe(struct hid_device *hdev,
 	data->input_dev->keycode = data->keycode;
 	data->input_dev->keycodemax = G19_KEYMAP_SIZE;
 	data->input_dev->keycodesize = sizeof(int);
+	
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+	
+	data->input_dev->setkeycode = g19_input_setkeycode_new;
+	data->input_dev->getkeycode = g19_input_getkeycode_new;
+
+#else
+
 	data->input_dev->setkeycode = g19_input_setkeycode;
 	data->input_dev->getkeycode = g19_input_getkeycode;
+
+#endif
 
 	input_set_capability(data->input_dev, EV_KEY, KEY_UNKNOWN);
 	data->input_dev->evbit[0] |= BIT_MASK(EV_REP);
@@ -1231,7 +1265,7 @@ static int g19_probe(struct hid_device *hdev,
 
 	data->gfb_data = gfb_probe(hdev, GFB_PANEL_TYPE_320_240_16);
 	if (data->gfb_data == NULL) {
-		dev_err(&hdev->dev, G19_NAME " error registering framebuffer\n", i);
+		dev_err(&hdev->dev, G19_NAME " error registering framebuffer\n");
 		goto err_cleanup_registered_leds;
 	}
 
@@ -1389,7 +1423,7 @@ static void g19_remove(struct hid_device *hdev)
 	kfree(data);
 }
 
-static void g19_post_reset_start(struct hid_device *hdev)
+static void __UNUSED g19_post_reset_start(struct hid_device *hdev)
 {
         unsigned long irq_flags;
 	struct g19_data *data = hid_get_g19data(hdev);
