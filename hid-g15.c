@@ -21,6 +21,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 #include <linux/usb.h>
@@ -33,6 +34,12 @@
 #include "usbhid/usbhid.h"
 
 #include "hid-gfb.h"
+
+#ifdef __GNUC__
+#define __UNUSED __attribute__ ((unused))
+#else
+#define __UNUSED
+#endif
 
 #define G15_NAME "Logitech G15"
 
@@ -1064,6 +1071,29 @@ static void g15_initialize_keymap(struct g15_data *data)
 	__clear_bit(KEY_RESERVED, data->input_dev->keybit);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+
+static int g15_input_setkeycode_new(struct input_dev * dev,
+                                    const struct input_keymap_entry * ke,
+                                    unsigned int * old_keycode)
+{
+	int scancode;
+	
+	memcpy(&scancode, &ke->scancode, sizeof scancode);
+	return g15_input_setkeycode(dev, scancode, ke->keycode);
+}
+
+static int g15_input_getkeycode_new(struct input_dev * dev,
+                                    struct input_keymap_entry * ke)
+{
+	int scancode;
+	
+	memcpy(&scancode, ke->scancode, sizeof scancode);
+	return g15_input_getkeycode(dev, scancode, &ke->keycode);
+}
+
+#endif
+
 static int g15_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
 {
@@ -1153,8 +1183,18 @@ static int g15_probe(struct hid_device *hdev,
 	data->input_dev->keycode = data->keycode;
 	data->input_dev->keycodemax = G15_KEYMAP_SIZE;
 	data->input_dev->keycodesize = sizeof(int);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+	
+	data->input_dev->setkeycode = g15_input_setkeycode_new;
+	data->input_dev->getkeycode = g15_input_getkeycode_new;
+
+#else
+
 	data->input_dev->setkeycode = g15_input_setkeycode;
 	data->input_dev->getkeycode = g15_input_getkeycode;
+
+#endif
 
 	input_set_capability(data->input_dev, EV_KEY, KEY_UNKNOWN);
 	data->input_dev->evbit[0] |= BIT_MASK(EV_REP);
@@ -1417,7 +1457,7 @@ static void g15_remove(struct hid_device *hdev)
 	kfree(data);
 }
 
-static void g15_post_reset_start(struct hid_device *hdev)
+static void __UNUSED g15_post_reset_start(struct hid_device *hdev)
 {
 	unsigned long irq_flags;
 	struct g15_data *data = hid_get_g15data(hdev);

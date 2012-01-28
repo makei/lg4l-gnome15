@@ -21,6 +21,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 #include <linux/usb.h>
@@ -33,6 +34,12 @@
 #include "usbhid/usbhid.h"
 
 #include "hid-gfb.h"
+
+#ifdef __GNUC__
+#define __UNUSED __attribute__ ((unused))
+#else
+#define __UNUSED
+#endif
 
 #define G19_NAME "Logitech G19"
 
@@ -185,7 +192,7 @@ static int g19_input_get_keycode(struct input_dev * dev,
 		.index    = scancode,
 		.scancode = { scancode },
 	};
-	memcpy(ke.scancode,&scancode,sizeof(scancode));
+
 	retval   = input_get_keycode(dev, &ke);
 	*keycode = ke.keycode;
 
@@ -478,7 +485,7 @@ static int g19_input_setkeycode(struct input_dev *dev,
 				unsigned int scancode,
 				unsigned int keycode)
 {
-  unsigned long irq_flags;
+	unsigned long irq_flags;
 	int old_keycode;
 	int i;
 	struct g19_data *data = input_get_g19data(dev);
@@ -541,7 +548,6 @@ static int g19_input_getkeycode(struct input_dev *dev,
 	return 0;
 }
 #endif
-
 
 /*
  * The "keymap" attribute
@@ -1139,12 +1145,33 @@ static int g19_ep1_read(struct hid_device *hdev)
 	return retval;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
 
+static int g19_input_setkeycode_new(struct input_dev * dev,
+                                    const struct input_keymap_entry * ke,
+                                    unsigned int * old_keycode)
+{
+	int scancode;
+	
+	memcpy(&scancode, &ke->scancode, sizeof scancode);
+	return g19_input_setkeycode(dev, scancode, ke->keycode);
+}
+
+static int g19_input_getkeycode_new(struct input_dev * dev,
+                                    struct input_keymap_entry * ke)
+{
+	int scancode;
+	
+	memcpy(&scancode, ke->scancode, sizeof scancode);
+	return g19_input_getkeycode(dev, scancode, &ke->keycode);
+}
+
+#endif
 
 static int g19_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
 {
-        unsigned long irq_flags;
+	unsigned long irq_flags;
 	int error;
 	struct g19_data *data;
 	int i;
@@ -1235,8 +1262,18 @@ static int g19_probe(struct hid_device *hdev,
 	data->input_dev->keycode = data->keycode;
 	data->input_dev->keycodemax = G19_KEYMAP_SIZE;
 	data->input_dev->keycodesize = sizeof(int);
+	
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+	
+	data->input_dev->setkeycode = g19_input_setkeycode_new;
+	data->input_dev->getkeycode = g19_input_getkeycode_new;
+
+#else
+
 	data->input_dev->setkeycode = g19_input_setkeycode;
 	data->input_dev->getkeycode = g19_input_getkeycode;
+
+#endif
 
 	input_set_capability(data->input_dev, EV_KEY, KEY_UNKNOWN);
 	data->input_dev->evbit[0] |= BIT_MASK(EV_REP);
@@ -1506,9 +1543,7 @@ static void g19_remove(struct hid_device *hdev)
 	hid_hw_stop(hdev);
 }
 
-EXPORT_SYMBOL_GPL(g19_remove);
-
-static void g19_post_reset_start(struct hid_device *hdev)
+static void __UNUSED g19_post_reset_start(struct hid_device *hdev)
 {
         unsigned long irq_flags;
 	struct g19_data *data = hid_get_g19data(hdev);

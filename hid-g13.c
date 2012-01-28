@@ -20,6 +20,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 #include <linux/usb.h>
@@ -32,6 +33,12 @@
 #include "usbhid/usbhid.h"
 
 #include "hid-gfb.h"
+
+#ifdef __GNUC__
+#define __UNUSED __attribute__ ((unused))
+#else
+#define __UNUSED
+#endif
 
 #define G13_NAME "Logitech G13"
 
@@ -193,10 +200,10 @@ static int g13_input_get_keycode(struct input_dev * dev,
 	struct input_keymap_entry ke = {
 		.flags    = 0,
 		.len      = sizeof(scancode),
-		.index    = scancode,
-		.scancode = scancode,
+		.index    = scancode
 	};
 	
+	memcpy(&ke.scancode, &scancode, sizeof scancode);
 	retval   = input_get_keycode(dev, &ke);
 	*keycode = ke.keycode;
 	
@@ -1025,6 +1032,29 @@ static void g13_initialize_keymap(struct g13_data *data)
 	__clear_bit(KEY_RESERVED, data->input_dev->keybit);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+
+static int g13_input_setkeycode_new(struct input_dev * dev,
+                                    const struct input_keymap_entry * ke,
+                                    unsigned int * old_keycode)
+{
+	int scancode;
+	
+	memcpy(&scancode, &ke->scancode, sizeof scancode);
+	return g13_input_setkeycode(dev, scancode, ke->keycode);
+}
+
+static int g13_input_getkeycode_new(struct input_dev * dev,
+                                    struct input_keymap_entry * ke)
+{
+	int scancode;
+	
+	memcpy(&scancode, ke->scancode, sizeof scancode);
+	return g13_input_getkeycode(dev, scancode, &ke->keycode);
+}
+
+#endif
+
 static int g13_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
 {
@@ -1114,8 +1144,18 @@ static int g13_probe(struct hid_device *hdev,
 	data->input_dev->keycode = data->keycode;
 	data->input_dev->keycodemax = G13_KEYMAP_SIZE;
 	data->input_dev->keycodesize = sizeof(int);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+	
+	data->input_dev->setkeycode = g13_input_setkeycode_new;
+	data->input_dev->getkeycode = g13_input_getkeycode_new;
+
+#else
+
 	data->input_dev->setkeycode = g13_input_setkeycode;
 	data->input_dev->getkeycode = g13_input_getkeycode;
+
+#endif
 
 	input_set_capability(data->input_dev, EV_ABS, ABS_X);
 	input_set_capability(data->input_dev, EV_ABS, ABS_Y);
@@ -1412,7 +1452,7 @@ static void g13_remove(struct hid_device *hdev)
 	kfree(data);
 }
 
-static void g13_post_reset_start(struct hid_device *hdev)
+static void __UNUSED g13_post_reset_start(struct hid_device *hdev)
 {
         unsigned long irq_flags;
 	struct g13_data *data = hid_get_g13data(hdev);

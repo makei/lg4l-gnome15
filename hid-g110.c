@@ -20,6 +20,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 #include <linux/usb.h>
@@ -30,6 +31,12 @@
 
 #include "hid-ids.h"
 #include "usbhid/usbhid.h"
+
+#ifdef __GNUC__
+#define __UNUSED __attribute__ ((unused))
+#else
+#define __UNUSED
+#endif
 
 #define G110_NAME "Logitech G110"
 
@@ -292,7 +299,7 @@ static void g110_rgb_send(struct hid_device *hdev)
 }
 
 static void g110_led_bl_brightness_set(struct led_classdev *led_cdev,
-										enum led_brightness value)
+									   enum led_brightness value)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -1025,7 +1032,28 @@ static int g110_ep1_read(struct hid_device *hdev)
 	return retval;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
 
+static int g110_input_setkeycode_new(struct input_dev * dev,
+                                    const struct input_keymap_entry * ke,
+                                    unsigned int * old_keycode)
+{
+	int scancode;
+	
+	memcpy(&scancode, &ke->scancode, sizeof scancode);
+	return g110_input_setkeycode(dev, scancode, ke->keycode);
+}
+
+static int g110_input_getkeycode_new(struct input_dev * dev,
+                                    struct input_keymap_entry * ke)
+{
+	int scancode;
+	
+	memcpy(&scancode, ke->scancode, sizeof scancode);
+	return g110_input_getkeycode(dev, scancode, &ke->keycode);
+}
+
+#endif
 
 static int g110_probe(struct hid_device *hdev,
 		     const struct hid_device_id *id)
@@ -1038,8 +1066,6 @@ static int g110_probe(struct hid_device *hdev,
 	struct usb_device *usbdev;
 	struct list_head *feature_report_list =
 		&hdev->report_enum[HID_FEATURE_REPORT].report_list;
-	struct list_head *output_report_list =
-			&hdev->report_enum[HID_OUTPUT_REPORT].report_list;
 	struct hid_report *report;
 	char *led_name;
 
@@ -1122,8 +1148,18 @@ static int g110_probe(struct hid_device *hdev,
 	data->input_dev->keycode = data->keycode;
 	data->input_dev->keycodemax = G110_KEYMAP_SIZE;
 	data->input_dev->keycodesize = sizeof(int);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+	
+	data->input_dev->setkeycode = g110_input_setkeycode_new;
+	data->input_dev->getkeycode = g110_input_getkeycode_new;
+
+#else
+
 	data->input_dev->setkeycode = g110_input_setkeycode;
 	data->input_dev->getkeycode = g110_input_getkeycode;
+
+#endif
 
 	input_set_capability(data->input_dev, EV_KEY, KEY_UNKNOWN);
 	data->input_dev->evbit[0] |= BIT_MASK(EV_REP);
@@ -1367,7 +1403,7 @@ static void g110_remove(struct hid_device *hdev)
 	kfree(data);
 }
 
-static void g110_post_reset_start(struct hid_device *hdev)
+static void __UNUSED g110_post_reset_start(struct hid_device *hdev)
 {
 	struct g110_data *data = hid_get_g110data(hdev);
 
