@@ -21,6 +21,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 #include <linux/usb.h>
@@ -33,6 +34,13 @@
 #include "usbhid/usbhid.h"
 
 #include "hid-gfb.h"
+#include "hid-ginput.h"
+
+#ifdef __GNUC__
+#define __UNUSED __attribute__ ((unused))
+#else
+#define __UNUSED
+#endif
 
 #define G510_NAME "Logitech G510"
 
@@ -87,12 +95,10 @@ struct g510_data {
 
 	/* core state */
 	char *name;
-	int keycode[G510_KEYMAP_SIZE];
-	int scancode_state[G510_KEYS];
 	u8 rgb[3];
 	u8 led;
-	u8 curkeymap;
-	u8 keymap_switching;
+
+        struct ginput_data input_data;
 
 	/* Framebuffer */
 	struct gfb_data *gfb_data;
@@ -161,33 +167,6 @@ static DEVICE_ATTR(fb_node, 0444, gfb_fb_node_show, NULL);
 static DEVICE_ATTR(fb_update_rate, 0666,
 		   gfb_fb_update_rate_show,
 		   gfb_fb_update_rate_store);
-
-static int g510_input_get_keycode(struct input_dev * dev,
-                                 unsigned int scancode,
-                                 unsigned int * keycode)
-{
-	int retval;
-	
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
-	
-	struct input_keymap_entry ke = {
-		.flags    = 0,
-		.len      = sizeof(scancode),
-		.index    = scancode,
-		.scancode = { scancode },
-	};
-	
-	retval   = input_get_keycode(dev, &ke);
-	*keycode = ke.keycode;
-	
-#else
-	
-	retval   = input_get_keycode(dev, scancode, keycode);
-	
-#endif
-	
-	return retval;
-}
 
 static void g510_msg_send(struct hid_device *hdev, u8 msg, u8 value1, u8 value2)
 {
@@ -297,7 +276,7 @@ static void g510_rgb_send(struct hid_device *hdev)
 }
 
 static void g510_led_bl_brightness_set(struct led_classdev *led_cdev,
-				      int value)
+                                       enum led_brightness value)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -380,347 +359,28 @@ static const struct led_classdev g510_led_cdevs[LED_COUNT] = {
 	},
 };
 
-static enum led_brightness g510_input_setkeycode(struct input_dev *dev,
-				int scancode,
-				int keycode)
-{
-	int old_keycode;
-	int i;
-	unsigned long irq_flags;
-	struct g510_data *data = input_get_g510data(dev);
-
-	if (scancode >= dev->keycodemax)
-		return -EINVAL;
-
-	spin_lock_irqsave(&data->lock, irq_flags);
-
-	old_keycode = data->keycode[scancode];
-	data->keycode[scancode] = keycode;
-
-	__clear_bit(old_keycode, dev->keybit);
-	__set_bit(keycode, dev->keybit);
-
-	for (i = 0; i < dev->keycodemax; i++) {
-		if (data->keycode[i] == old_keycode) {
-			__set_bit(old_keycode, dev->keybit);
-			break; /* Setting the bit twice is useless, so break*/
-		}
-	}
-
-	spin_unlock_irqrestore(&data->lock, irq_flags);
-
-	return LED_OFF;
-}
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
-static int g510_input_getkeycode(struct input_dev *dev,
-								struct input_keymap_entry *ke)
-{
-	struct g510_data *data = input_get_g510data(dev);
-
-	if (!dev->keycodesize)
-		return -EINVAL;
-
-	if (*ke->scancode >= dev->keycodemax)
-		return -EINVAL;
-
-	ke->keycode = data->keycode[*ke->scancode];
-
-	return 0;
-}
-#else
-static int g510_input_getkeycode(struct input_dev *dev,
-				int scancode,
-				int *keycode)
-{
-	struct g510_data *data = input_get_g510data(dev);
-
-	if (!dev->keycodesize)
-		return -EINVAL;
-
-	if (scancode >= dev->keycodemax)
-		return -EINVAL;
-
-	*keycode = data->keycode[scancode];
-
-	return 0;
-}
-#endif
-
-
-/*
- * The "keymap" attribute
- */
-static ssize_t g510_keymap_index_show(struct device *dev,
-				     struct device_attribute *attr,
-				     char *buf)
-{
-	struct g510_data *data = dev_get_drvdata(dev);
-
-	return sprintf(buf, "%u\n", data->curkeymap);
-}
-
-static ssize_t g510_set_keymap_index(struct hid_device *hdev, unsigned k)
-{
-	int scancode;
-	int offset_old;
-	int offset_new;
-	int keycode_old;
-	int keycode_new;
-	struct g510_data *data = hid_get_g510data(hdev);
-	struct input_dev *idev = data->input_dev;
-
-	if (k > 2)
-		return -EINVAL;
-
-	/*
-	 * Release all the pressed keys unless the new keymap has the same key
-	 * in the same scancode position.
-	 *
-	 * Also, clear the scancode state unless the new keymap has the same
-	 * key in the same scancode position.
-	 *
-	 * This allows a keycode mapped to the same scancode in two different
-	 * keymaps to remain pressed without a key up code when the keymap is
-	 * switched.
-	 */
-	offset_old = G510_KEYS * data->curkeymap;
-	offset_new = G510_KEYS * k;
-	for (scancode = 0; scancode < G510_KEYS; scancode++) {
-		keycode_old = data->keycode[offset_old+scancode];
-		keycode_new = data->keycode[offset_new+scancode];
-		if (keycode_old != keycode_new) {
-			if (keycode_old != KEY_RESERVED)
-				input_report_key(idev, keycode_old, 0);
-			data->scancode_state[scancode] = 0;
-		}
-	}
-
-	data->curkeymap = k;
-
-	if (data->keymap_switching) {
-		data->led = 1 << k;
-		g510_msg_send(hdev, 4, ~data->led, 0);
-	}
-
-	return 0;
-}
-
-static ssize_t g510_keymap_index_store(struct device *dev,
-				      struct device_attribute *attr,
-				      const char *buf, size_t count)
-{
-	struct hid_device *hdev;
-	int i;
-	unsigned k;
-	ssize_t set_result;
-
-	/* Get the hid associated with the device */
-	hdev = container_of(dev, struct hid_device, dev);
-
-	/* If we have an invalid pointer we'll return ENODATA */
-	if (hdev == NULL || &(hdev->dev) != dev)
-		return -ENODATA;
-
-	i = sscanf(buf, "%u", &k);
-	if (i != 1) {
-		dev_warn(dev, G510_NAME " unrecognized input: %s", buf);
-		return -1;
-	}
-
-	set_result = g510_set_keymap_index(hdev, k);
-
-	if (set_result < 0)
-		return set_result;
-
-	return count;
-}
 
 static DEVICE_ATTR(keymap_index, 0666,
-		   g510_keymap_index_show,
-		   g510_keymap_index_store);
+		   ginput_keymap_index_show,
+		   ginput_keymap_index_store);
 
-/*
- * The "keycode" attribute
- */
-static ssize_t g510_keymap_show(struct device *dev,
-			       struct device_attribute *attr,
-			       char *buf)
-{
-	int offset = 0;
-	int result;
-	int scancode;
-	int keycode;
-	int error;
-
-	struct g510_data *data = dev_get_drvdata(dev);
-
-	for (scancode = 0; scancode < G510_KEYMAP_SIZE; scancode++) {
-		error = g510_input_get_keycode(data->input_dev, scancode, &keycode);
-		if (error) {
-			dev_warn(dev, G510_NAME " error accessing scancode %d\n",
-				 scancode);
-			continue;
-		}
-
-		result = sprintf(buf+offset, "0x%03x 0x%04x\n",
-				 scancode, keycode);
-		if (result < 0)
-			return -EINVAL;
-		offset += result;
-	}
-
-	return offset+1;
-}
-
-static ssize_t g510_keymap_store(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	struct hid_device *hdev;
-	int scanned;
-	int consumed;
-	int scancd;
-	int keycd;
-	int error;
-	int set = 0;
-	int gkey;
-	int index;
-	int good;
-	struct g510_data *data;
-
-	/* Get the hid associated with the device */
-	hdev = container_of(dev, struct hid_device, dev);
-
-	/* If we have an invalid pointer we'll return ENODATA */
-	if (hdev == NULL || &(hdev->dev) != dev)
-		return -ENODATA;
-
-	/* Now, let's get the data structure */
-	data = hid_get_g510data(hdev);
-
-	do {
-		good = 0;
-
-		/* Look for scancode keycode pair in hex */
-		scanned = sscanf(buf, "%x %x%n", &scancd, &keycd, &consumed);
-		if (scanned == 2) {
-			buf += consumed;
-			error = g510_input_setkeycode(data->input_dev, scancd, keycd);
-			if (error)
-				goto err_input_setkeycode;
-			set++;
-			good = 1;
-		} else {
-			/*
-			 * Look for Gkey keycode pair and assign to current
-			 * keymap
-			 */
-			scanned = sscanf(buf, "G%d %x%n", &gkey, &keycd, &consumed);
-			if (scanned == 2 && gkey > 0 && gkey <= G510_KEYS) {
-				buf += consumed;
-				scancd = data->curkeymap * G510_KEYS + gkey - 1;
-				error = g510_input_setkeycode(data->input_dev, scancd, keycd);
-				if (error)
-					goto err_input_setkeycode;
-				set++;
-				good = 1;
-			} else {
-				/*
-				 * Look for Gkey-index keycode pair and assign
-				 * to indexed keymap
-				 */
-				scanned = sscanf(buf, "G%d-%d %x%n", &gkey, &index, &keycd, &consumed);
-				if (scanned == 3 &&
-				    gkey > 0 && gkey <= G510_KEYS &&
-				    index >= 0 && index <= 2) {
-					buf += consumed;
-					scancd = index * G510_KEYS + gkey - 1;
-					error = g510_input_setkeycode(data->input_dev, scancd, keycd);
-					if (error)
-						goto err_input_setkeycode;
-					set++;
-					good = 1;
-				}
-			}
-		}
-
-	} while (good);
-
-	if (set == 0) {
-		dev_warn(dev, G510_NAME " unrecognized keycode input: %s", buf);
-		return -1;
-	}
-
-	return count;
-
-err_input_setkeycode:
-	dev_warn(dev, G510_NAME " error setting scancode %d to keycode %d\n",
-		 scancd, keycd);
-	return error;
-}
-
-static DEVICE_ATTR(keymap, 0666, g510_keymap_show, g510_keymap_store);
-
-/*
- * The "keymap_switching" attribute
- */
-static ssize_t g510_keymap_switching_show(struct device *dev,
-					 struct device_attribute *attr,
-					 char *buf)
-{
-	struct g510_data *data = dev_get_drvdata(dev);
-
-	return sprintf(buf, "%u\n", data->keymap_switching);
-}
-
-static ssize_t g510_set_keymap_switching(struct hid_device *hdev, unsigned k)
-{
-	struct g510_data *data = hid_get_g510data(hdev);
-
-	data->keymap_switching = k;
-
-	if (data->keymap_switching) {
-		data->led = 1 << data->curkeymap;
-		g510_msg_send(hdev, 4, ~data->led, 0);
-	}
-
-	return 0;
-}
-
-static ssize_t g510_keymap_switching_store(struct device *dev,
-					  struct device_attribute *attr,
-					  const char *buf, size_t count)
-{
-	struct hid_device *hdev;
-	int i;
-	unsigned k;
-	ssize_t set_result;
-
-	/* Get the hid associated with the device */
-	hdev = container_of(dev, struct hid_device, dev);
-
-	/* If we have an invalid pointer we'll return ENODATA */
-	if (hdev == NULL || &(hdev->dev) != dev)
-		return -ENODATA;
-
-	i = sscanf(buf, "%u", &k);
-	if (i != 1) {
-		dev_warn(dev, G510_NAME "unrecognized input: %s", buf);
-		return -1;
-	}
-
-	set_result = g510_set_keymap_switching(hdev, k);
-
-	if (set_result < 0)
-		return set_result;
-
-	return count;
-}
+static DEVICE_ATTR(keymap, 0666, 
+                   ginput_keymap_show, 
+                   ginput_keymap_store);
 
 static DEVICE_ATTR(keymap_switching, 0644,
-		   g510_keymap_switching_show,
-		   g510_keymap_switching_store);
+		   ginput_keymap_switching_show,
+		   ginput_keymap_switching_store);
+
+/* change leds when the keymap was changed */
+static void g510_notify_keymap_switched(struct ginput_data * ginput_data, 
+                                        unsigned int index)
+{
+        struct g510_data * data = hid_get_g510data(ginput_data->hdev);
+
+        data->led = 1 << index;
+        g510_msg_send(ginput_data->hdev, 4, ~data->led, 0);
+}
 
 
 static ssize_t g510_name_show(struct device *dev,
@@ -840,36 +500,6 @@ static struct attribute_group g510_attr_group = {
 	.attrs = g510_attrs,
 };
 
-static void g510_handle_key_event(struct g510_data *data,
-				 struct input_dev *idev,
-				 int scancode,
-				 int value)
-{
-	int error;
-	int keycode;
-	int offset;
-
-	offset = G510_KEYS * data->curkeymap;
-
-	error = g510_input_get_keycode(idev, scancode+offset, &keycode);
-
-	if (unlikely(error)) {
-		dev_warn(&idev->dev, G510_NAME " error in input_get_keycode(): scancode=%d\n", scancode);
-		return;
-	}
-
-	/* Only report mapped keys */
-	if (keycode != KEY_RESERVED) {
-		input_report_key(idev, keycode, value);
-	}
-	/* Or report MSC_SCAN on keypress of an unmapped key */
-	else if (data->scancode_state[scancode] == 0 && value) {
-		input_event(idev, EV_MSC, MSC_SCAN, scancode);
-	}
-
-	data->scancode_state[scancode] = value;
-}
-
 static void g510_raw_event_process_input(struct hid_device *hdev,
 					struct g510_data *data,
 					u8 *raw_data)
@@ -885,13 +515,13 @@ static void g510_raw_event_process_input(struct hid_device *hdev,
 	 * the remainder of the key data. That way the new keymap will
 	 * be loaded if there is a keymap switch.
 	 */
-	if (unlikely(data->keymap_switching)) {
-		if (data->curkeymap != 0 && raw_data[3] & 0x10)
-			g510_set_keymap_index(hdev, 0);
-		else if (data->curkeymap != 1 && raw_data[3] & 0x20)
-			g510_set_keymap_index(hdev, 1);
-		else if (data->curkeymap != 2 && raw_data[3] & 0x40)
-			g510_set_keymap_index(hdev, 2);
+	if (unlikely(data->input_data.keymap_switching)) {
+		if (data->input_data.curkeymap != 0 && raw_data[3] & 0x10)
+			ginput_set_keymap_index(&data->input_data, 0);
+		else if (data->input_data.curkeymap != 1 && raw_data[3] & 0x20)
+			ginput_set_keymap_index(&data->input_data, 1);
+		else if (data->input_data.curkeymap != 2 && raw_data[3] & 0x40)
+			ginput_set_keymap_index(&data->input_data, 2);
 	}
 
 	raw_data[4] &= 0xFE; /* This bit turns on and off at random - G510 - does it do this? seems safe to leave here in case */
@@ -899,19 +529,19 @@ static void g510_raw_event_process_input(struct hid_device *hdev,
 	for (i = 0, mask = 0x01; i < 8; i++, mask <<= 1) {
 		scancode = i;
 		value = raw_data[1] & mask;
-		g510_handle_key_event(data, idev, scancode, value);
+		ginput_handle_key_event(&data->input_data, scancode, value);
 
 		scancode = i + 8;
 		value = raw_data[2] & mask;
-		g510_handle_key_event(data, idev, scancode, value);
+		ginput_handle_key_event(&data->input_data, scancode, value);
 
 		scancode = i + 16;
 		value = raw_data[3] & mask;
-		g510_handle_key_event(data, idev, scancode, value);
+		ginput_handle_key_event(&data->input_data, scancode, value);
 
 		scancode = i + 24;
 		value = raw_data[4] & mask;
-		g510_handle_key_event(data, idev, scancode, value);
+		ginput_handle_key_event(&data->input_data, scancode, value);
 	}
 
 	input_sync(idev);
@@ -983,8 +613,8 @@ static void g510_initialize_keymap(struct g510_data *data)
 	int i;
 
 	for (i = 0; i < G510_KEYS; i++) {
-		data->keycode[i] = g510_default_key_map[i];
-		__set_bit(data->keycode[i], data->input_dev->keybit);
+		data->input_data.keycode[i] = g510_default_key_map[i];
+		__set_bit(data->input_data.keycode[i], data->input_dev->keybit);
 	}
 
 	__clear_bit(KEY_RESERVED, data->input_dev->keybit);
@@ -1076,14 +706,25 @@ static int g510_probe(struct hid_device *hdev,
 	data->input_dev->id.product = hdev->product;
 	data->input_dev->id.version = hdev->version;
 	data->input_dev->dev.parent = hdev->dev.parent;
-	data->input_dev->keycode = data->keycode;
+	data->input_dev->keycode = data->input_data.keycode;
 	data->input_dev->keycodemax = G510_KEYMAP_SIZE;
 	data->input_dev->keycodesize = sizeof(int);
-	data->input_dev->setkeycode = g510_input_setkeycode;
-	data->input_dev->getkeycode = g510_input_getkeycode;
+	data->input_dev->setkeycode = ginput_setkeycode;
+	data->input_dev->getkeycode = ginput_getkeycode;
 
 	input_set_capability(data->input_dev, EV_KEY, KEY_UNKNOWN);
 	data->input_dev->evbit[0] |= BIT_MASK(EV_REP);
+
+        data->input_data.input_dev = data->input_dev;
+        data->input_data.hdev = data->hdev;
+        data->input_data.notify_keymap_switched = g510_notify_keymap_switched;
+        data->input_data.lock = &data->lock;
+
+        error = ginput_alloc(&data->input_data, G510_KEYS);
+        if (error) {
+		dev_err(&hdev->dev, G510_NAME " error allocating memory for the input device");
+                goto err_cleanup_input_dev;
+        }
 
 	g510_initialize_keymap(data);
 
@@ -1091,7 +732,7 @@ static int g510_probe(struct hid_device *hdev,
 	if (error) {
 		dev_err(&hdev->dev, G510_NAME " error registering the input device");
 		error = -EINVAL;
-		goto err_cleanup_input_dev;
+		goto err_cleanup_input_dev_data;
 	}
 
 	dbg_hid(KERN_INFO G510_NAME " allocated framebuffer\n");
@@ -1284,7 +925,7 @@ static int g510_probe(struct hid_device *hdev,
 
 	spin_unlock_irqrestore(&data->lock, irq_flags);
 
-	g510_set_keymap_switching(hdev, 1);
+	ginput_set_keymap_switching(&data->input_data, 1);
 
 	dbg_hid("G510 activated and initialized\n");
 
@@ -1306,6 +947,9 @@ err_cleanup_led_structs:
 
 err_cleanup_input_dev_reg:
 	input_unregister_device(data->input_dev);
+
+err_cleanup_input_dev_data:
+        ginput_free(&data->input_data);
 
 err_cleanup_input_dev:
 	input_free_device(data->input_dev);
@@ -1330,6 +974,7 @@ static void g510_remove(struct hid_device *hdev)
 	data = hid_get_drvdata(hdev);
 
 	input_unregister_device(data->input_dev);
+        ginput_free(&data->input_data);
 
 	kfree(data->name);
 
@@ -1352,7 +997,7 @@ static void g510_remove(struct hid_device *hdev)
 	kfree(data);
 }
 
-static void g510_post_reset_start(struct hid_device *hdev)
+static void __UNUSED g510_post_reset_start(struct hid_device *hdev)
 {
 	unsigned long irq_flags;
 	struct g510_data *data = hid_get_g510data(hdev);
