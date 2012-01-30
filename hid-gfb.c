@@ -62,7 +62,7 @@ static void gfb_free_framebuffer_work(struct work_struct *work)
 	struct gfb_data *dev = container_of(work, struct gfb_data,
 					     free_framebuffer_work.work);
 	struct fb_info *info = dev->fb_info;
-	int node = info->node;
+	/* int node = info->node; */
 
 	unregister_framebuffer(info);
 
