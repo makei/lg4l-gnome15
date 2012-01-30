@@ -445,9 +445,9 @@ static struct fb_ops gfb_ops = {
 /*
  * The "fb_node" attribute
  */
-static ssize_t gfb_fb_node_show(struct device *dev,
-				struct device_attribute *attr,
-				char *buf)
+ssize_t gfb_fb_node_show(struct device *dev,
+                         struct device_attribute *attr,
+                         char *buf)
 {
 	unsigned fb_node;
 	struct gfb_data *data = dev_get_drvdata(dev);
@@ -462,9 +462,9 @@ EXPORT_SYMBOL_GPL(gfb_fb_node_show);
 /*
  * The "fb_update_rate" attribute
  */
-static ssize_t gfb_fb_update_rate_show(struct device *dev,
-				       struct device_attribute *attr,
-				       char *buf)
+ssize_t gfb_fb_update_rate_show(struct device *dev,
+                                struct device_attribute *attr,
+                                char *buf)
 {
 	unsigned fb_update_rate;
 	struct gfb_data *data = dev_get_drvdata(dev);
@@ -493,9 +493,9 @@ static ssize_t gfb_set_fb_update_rate(struct hid_device *hdev,
 	return 0;
 }
 
-static ssize_t gfb_fb_update_rate_store(struct device *dev,
-					struct device_attribute *attr,
-					const char *buf, size_t count)
+ssize_t gfb_fb_update_rate_store(struct device *dev,
+                                 struct device_attribute *attr,
+                                 const char *buf, size_t count)
 {
 	struct hid_device *hdev;
 	int i;
@@ -528,8 +528,8 @@ static struct fb_deferred_io gfb_fb_defio = {
 	.deferred_io = gfb_fb_deferred_io,
 };
 
-static struct gfb_data *gfb_probe(struct hid_device *hdev,
-		     const int panel_type)
+struct gfb_data *gfb_probe(struct hid_device *hdev,
+                           const int panel_type)
 {
 	int error;
 	struct gfb_data *data;
@@ -685,7 +685,7 @@ EXPORT_SYMBOL_GPL(gfb_probe);
 
 
 
-static void gfb_remove(struct gfb_data *data)
+void gfb_remove(struct gfb_data *data)
 {
     data->virtualized = true; // Device gone, we wont do any io
 	atomic_set(&data->usb_active, 0);
