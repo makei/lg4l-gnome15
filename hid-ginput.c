@@ -24,40 +24,43 @@
 #include <linux/input.h>
 #include <linux/hid.h>
 
-#include "hid-ginput.h"
+#include "hid-gcommon.h"
 
 
-#define input_get_data(idev) \
-	((struct ginput_data *)(input_get_drvdata(idev)))
+#define input_get_gdata(idev) \
+	((struct gcommon_data *)(input_get_drvdata(idev)))
+#define input_get_idata(idev) \
+	((struct ginput_data *) &(input_get_gdata(idev)->input_data))
 
 
 
-int ginput_alloc(struct ginput_data * data, int key_count)
+int ginput_alloc(struct gcommon_data * gdata, int key_count)
 {
-  data->key_count = key_count;
+  struct ginput_data * input_data = &gdata->input_data;
+  input_data->key_count = key_count;
 
-  data->keycode = kzalloc(key_count * sizeof(int), GFP_KERNEL);
-  if (data->keycode == NULL)
+  input_data->keycode = kzalloc(key_count * sizeof(int), GFP_KERNEL);
+  if (input_data->keycode == NULL)
     goto err_keycode;
 
-  data->scancode_state = kzalloc(3 * key_count * sizeof(int), GFP_KERNEL);
-  if (data->scancode_state == NULL)
+  input_data->scancode_state = kzalloc(3 * key_count * sizeof(int), GFP_KERNEL);
+  if (input_data->scancode_state == NULL)
     goto err_scancode_state;
 
   return 0;
 
 err_scancode_state:
-  kfree(data->keycode);
+  kfree(input_data->keycode);
 
 err_keycode:
   return -ENOMEM;
 }
 EXPORT_SYMBOL_GPL(ginput_alloc);
 
-void ginput_free(struct ginput_data * data)
+void ginput_free(struct gcommon_data * gdata)
 {
-  kfree(data->scancode_state);
-  kfree(data->keycode);
+  kfree(gdata->input_data.scancode_state);
+  kfree(gdata->input_data.keycode);
 }
 EXPORT_SYMBOL_GPL(ginput_free);
 
@@ -84,22 +87,23 @@ int ginput_get_keycode(struct input_dev * dev,
 	return retval;
 }
 
-void ginput_handle_key_event(struct ginput_data *data,
+void ginput_handle_key_event(struct gcommon_data *gdata,
                              int scancode,
                              int value)
 {
-        struct input_dev * idev = data->input_dev;
+        struct input_dev * idev = gdata->input_dev;
+        struct ginput_data * idata = &gdata->input_data;
 	int error;
 	int keycode;
 	int offset;
 
-	offset = data->key_count * data->curkeymap;
+	offset = idata->key_count * idata->curkeymap;
 
 	error = ginput_get_keycode(idev, scancode+offset, &keycode);
 
 	if (unlikely(error)) {
 		dev_warn(&idev->dev, "%s error in ginput_get_keycode(): scancode=%d\n", 
-                         data->input_dev->name, scancode);
+                         gdata->name, scancode);
 		return;
 	}
 
@@ -108,11 +112,11 @@ void ginput_handle_key_event(struct ginput_data *data,
 		input_report_key(idev, keycode, value);
 	}
 	/* Or report MSC_SCAN on keypress of an unmapped key */
-	else if (data->scancode_state[scancode] == 0 && value) {
+	else if (idata->scancode_state[scancode] == 0 && value) {
 		input_event(idev, EV_MSC, MSC_SCAN, scancode);
 	}
 
-	data->scancode_state[scancode] = value;
+	idata->scancode_state[scancode] = value;
 }
 EXPORT_SYMBOL_GPL(ginput_handle_key_event);
 
@@ -124,28 +128,29 @@ int ginput_setkeycode(struct input_dev * dev,
 {
 	unsigned long irq_flags;
 	int i;
-	struct ginput_data *data = input_get_data(dev);
+	struct gcommon_data *gdata = input_get_gdata(dev);
+	struct ginput_data *idata = &gdata->input_data;
         unsigned int * scancode = (unsigned int *) ke->scancode;
 
 	if (*scancode >= dev->keycodemax)
 		return -EINVAL;
 
-	spin_lock_irqsave(data->lock, irq_flags);
+	spin_lock_irqsave(&gdata->lock, irq_flags);
 
-	*old_keycode = data->keycode[*scancode];
-	data->keycode[*scancode] = ke->keycode;
+	*old_keycode = idata->keycode[*scancode];
+	idata->keycode[*scancode] = ke->keycode;
 
 	__clear_bit(*old_keycode, dev->keybit);
 	__set_bit(ke->keycode, dev->keybit);
 
 	for (i = 0; i < dev->keycodemax; i++) {
-		if (data->keycode[i] == *old_keycode) {
+		if (idata->keycode[i] == *old_keycode) {
 			__set_bit(*old_keycode, dev->keybit);
 			break; /* Setting the bit twice is useless, so break*/
 		}
 	}
 
-	spin_unlock_irqrestore(data->lock, irq_flags);
+	spin_unlock_irqrestore(&gdata->lock, irq_flags);
 
 	return 0;
 }
@@ -170,7 +175,7 @@ static int ginput_setkeycode_internal(struct input_dev * dev,
 int ginput_getkeycode(struct input_dev *dev,
                       struct input_keymap_entry *ke)
 {
-	struct ginput_data *data = input_get_data(dev);
+	struct gcommon_data *gdata = input_get_gdata(dev);
         unsigned int * scancode = (unsigned int *) ke->scancode;
 
 	if (!dev->keycodesize)
@@ -179,7 +184,7 @@ int ginput_getkeycode(struct input_dev *dev,
 	if (*scancode >= dev->keycodemax)
 		return -EINVAL;
 
-	ke->keycode = data->keycode[*scancode];
+	ke->keycode = gdata->input_data.keycode[*scancode];
 
 	return 0;
 }
@@ -194,13 +199,13 @@ ssize_t ginput_keymap_index_show(struct device *dev,
                                  struct device_attribute *attr,
                                  char *buf)
 {
-	struct ginput_data *data = dev_get_drvdata(dev);
+	struct gcommon_data *gdata = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%u\n", data->curkeymap);
+	return sprintf(buf, "%u\n", gdata->input_data.curkeymap);
 }
 EXPORT_SYMBOL_GPL(ginput_keymap_index_show);
 
-ssize_t ginput_set_keymap_index(struct ginput_data *data, unsigned k)
+ssize_t ginput_set_keymap_index(struct gcommon_data *gdata, unsigned k)
 {
 	int scancode;
 	int offset_old;
@@ -208,7 +213,8 @@ ssize_t ginput_set_keymap_index(struct ginput_data *data, unsigned k)
 	int keycode_old;
 	int keycode_new;
 
-	struct input_dev *idev = data->input_dev;
+	struct input_dev *idev = gdata->input_dev;
+        struct ginput_data *idata = &gdata->input_data;
 
 	if (k > 2)
 		return -EINVAL;
@@ -224,22 +230,22 @@ ssize_t ginput_set_keymap_index(struct ginput_data *data, unsigned k)
 	 * keymaps to remain pressed without a key up code when the keymap is
 	 * switched.
 	 */
-	offset_old = data->key_count * data->curkeymap;
-	offset_new = data->key_count * k;
-	for (scancode = 0; scancode < data->key_count; scancode++) {
-		keycode_old = data->keycode[offset_old+scancode];
-		keycode_new = data->keycode[offset_new+scancode];
+	offset_old = idata->key_count * idata->curkeymap;
+	offset_new = idata->key_count * k;
+	for (scancode = 0; scancode < idata->key_count; scancode++) {
+		keycode_old = idata->keycode[offset_old+scancode];
+		keycode_new = idata->keycode[offset_new+scancode];
 		if (keycode_old != keycode_new) {
 			if (keycode_old != KEY_RESERVED)
 				input_report_key(idev, keycode_old, 0);
-			data->scancode_state[scancode] = 0;
+			idata->scancode_state[scancode] = 0;
 		}
 	}
 
-	data->curkeymap = k;
+	idata->curkeymap = k;
 
-	if (data->keymap_switching && data->notify_keymap_switched) {
-                (*data->notify_keymap_switched)(data, k);
+	if (idata->keymap_switching && idata->notify_keymap_switched) {
+                (*idata->notify_keymap_switched)(gdata, k);
 	}
 
 	return 0;
@@ -254,15 +260,15 @@ ssize_t ginput_keymap_index_store(struct device *dev,
 	unsigned k;
 	ssize_t set_result;
 
-	struct ginput_data *data = dev_get_drvdata(dev);
+	struct gcommon_data *gdata = dev_get_drvdata(dev);
 
 	i = sscanf(buf, "%u", &k);
 	if (i != 1) {
-        	dev_warn(dev, "%s unrecognized input: %s", data->input_dev->name, buf);
+        	dev_warn(dev, "%s unrecognized input: %s", gdata->input_dev->name, buf);
 		return -1;
 	}
 
-	set_result = ginput_set_keymap_index(data, k);
+	set_result = ginput_set_keymap_index(gdata, k);
 
 	if (set_result < 0)
 		return set_result;
@@ -284,15 +290,15 @@ ssize_t ginput_keymap_show(struct device *dev,
 	int keycode;
 	int error;
 
-	struct ginput_data *data = dev_get_drvdata(dev);
+	struct gcommon_data *gdata = dev_get_drvdata(dev);
 
-        int keymap_size = 3 * data->key_count;
+        int keymap_size = 3 * gdata->input_data.key_count;
 
 	for (scancode = 0; scancode < keymap_size; scancode++) {
-		error = ginput_get_keycode(data->input_dev, scancode, &keycode);
+		error = ginput_get_keycode(gdata->input_dev, scancode, &keycode);
 		if (error) {
 			dev_warn(dev, "%s error accessing scancode %d\n",
-				 data->input_dev->name, scancode);
+				 gdata->input_dev->name, scancode);
 			continue;
 		}
 
@@ -321,7 +327,8 @@ ssize_t ginput_keymap_store(struct device *dev,
 	int index;
 	int good;
 
-	struct ginput_data *data = dev_get_drvdata(dev);
+	struct gcommon_data *gdata = dev_get_drvdata(dev);
+        struct ginput_data *idata = &gdata->input_data;
 
 	do {
 		good = 0;
@@ -330,7 +337,7 @@ ssize_t ginput_keymap_store(struct device *dev,
 		scanned = sscanf(buf, "%x %x%n", &scancd, &keycd, &consumed);
 		if (scanned == 2) {
 			buf += consumed;
-			error = ginput_setkeycode_internal(data->input_dev, scancd, keycd);
+			error = ginput_setkeycode_internal(gdata->input_dev, scancd, keycd);
 			if (error)
 				goto err_input_setkeycode;
 			set++;
@@ -341,10 +348,10 @@ ssize_t ginput_keymap_store(struct device *dev,
 			 * keymap
 			 */
 			scanned = sscanf(buf, "G%d %x%n", &gkey, &keycd, &consumed);
-			if (scanned == 2 && gkey > 0 && gkey <= data->key_count) {
+			if (scanned == 2 && gkey > 0 && gkey <= idata->key_count) {
 				buf += consumed;
-				scancd = data->curkeymap * data->key_count + gkey - 1;
-				error = ginput_setkeycode_internal(data->input_dev, scancd, keycd);
+				scancd = idata->curkeymap * idata->key_count + gkey - 1;
+				error = ginput_setkeycode_internal(gdata->input_dev, scancd, keycd);
 				if (error)
 					goto err_input_setkeycode;
 				set++;
@@ -356,11 +363,11 @@ ssize_t ginput_keymap_store(struct device *dev,
 				 */
 				scanned = sscanf(buf, "G%d-%d %x%n", &gkey, &index, &keycd, &consumed);
 				if (scanned == 3 &&
-				    gkey > 0 && gkey <= data->key_count &&
+				    gkey > 0 && gkey <= idata->key_count &&
 				    index >= 0 && index <= 2) {
 					buf += consumed;
-					scancd = index * data->key_count + gkey - 1;
-					error = ginput_setkeycode_internal(data->input_dev, scancd, keycd);
+					scancd = index * idata->key_count + gkey - 1;
+					error = ginput_setkeycode_internal(gdata->input_dev, scancd, keycd);
 					if (error)
 						goto err_input_setkeycode;
 					set++;
@@ -373,7 +380,7 @@ ssize_t ginput_keymap_store(struct device *dev,
 
 	if (set == 0) {
         	dev_warn(dev, "%s unrecognized keycode input: %s", 
-                         data->input_dev->name, buf);
+                         gdata->name, buf);
 		return -1;
 	}
 
@@ -381,7 +388,7 @@ ssize_t ginput_keymap_store(struct device *dev,
 
 err_input_setkeycode:
 	dev_warn(dev, "%s error setting scancode %d to keycode %d\n", 
-                 data->input_dev->name, scancd, keycd);
+                 gdata->name, scancd, keycd);
 	return error;
 }
 EXPORT_SYMBOL_GPL(ginput_keymap_store);
@@ -393,20 +400,19 @@ ssize_t ginput_keymap_switching_show(struct device *dev,
                                      struct device_attribute *attr,
                                      char *buf)
 {
-	struct ginput_data *data = dev_get_drvdata(dev);
+	struct gcommon_data *gdata = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%u\n", data->keymap_switching);
+	return sprintf(buf, "%u\n", gdata->input_data.keymap_switching);
 }
 EXPORT_SYMBOL_GPL(ginput_keymap_switching_show);
 
-ssize_t ginput_set_keymap_switching(struct ginput_data *data, unsigned k)
+ssize_t ginput_set_keymap_switching(struct gcommon_data *gdata, unsigned k)
 {
-	data->keymap_switching = k;
+        struct ginput_data * idata = &gdata->input_data;
+	idata->keymap_switching = k;
 
-	if (data->keymap_switching && data->notify_keymap_switched) {
-                (*data->notify_keymap_switched)(data, k);
-		/* data->led = 1 << data->curkeymap; */
-		/* ginput_msg_send(hdev, 4, ~data->led, 0); */
+	if (idata->keymap_switching && idata->notify_keymap_switched) {
+                (*idata->notify_keymap_switched)(gdata, k);
 	}
 
 	return 0;
@@ -421,16 +427,16 @@ ssize_t ginput_keymap_switching_store(struct device *dev,
 	unsigned k;
 	ssize_t set_result;
 
-	struct ginput_data *data = dev_get_drvdata(dev);
+	struct gcommon_data *gdata = dev_get_drvdata(dev);
 
 	i = sscanf(buf, "%u", &k);
 	if (i != 1) {
         	dev_warn(dev, "%s unrecognized input: %s", 
-                         data->input_dev->name, buf);
+                         gdata->name, buf);
 		return -1;
 	}
 
-	set_result = ginput_set_keymap_switching(data, k);
+	set_result = ginput_set_keymap_switching(gdata, k);
 
 	if (set_result < 0)
 		return set_result;

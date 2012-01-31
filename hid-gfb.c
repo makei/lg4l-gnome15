@@ -33,7 +33,7 @@
 #include "hid-ids.h"
 #include "usbhid/usbhid.h"
 
-#include "hid-gfb.h"
+#include "hid-gcommon.h"
 #define GFB_NAME "Logitech GamePanel Framebuffer"
 
 /* Framebuffer defines */
@@ -41,8 +41,8 @@
 #define GFB_UPDATE_RATE_DEFAULT (30)
 
 /* Convenience macros */
-#define hid_get_gfbdata(hdev) \
-	((struct gfb_data *)(hid_get_drvdata(hdev)))
+#define dev_get_gfbdata(dev) \
+	((struct gfb_data *)(dev_get_gdata(dev)->gfb_data))
 
 static uint32_t pseudo_palette[16];
 
@@ -433,10 +433,10 @@ static ssize_t gfb_fb_write(struct fb_info *info, const char __user *buf,
 static struct fb_ops gfb_ops = {
 	.owner = THIS_MODULE,
 	.fb_read      = fb_sys_read,
-    .fb_open      = gfb_fb_open,
-    .fb_release   = gfb_fb_release,
+        .fb_open      = gfb_fb_open,
+        .fb_release   = gfb_fb_release,
 	.fb_write     = gfb_fb_write,
-    .fb_setcolreg = gfb_fb_setcolreg,
+        .fb_setcolreg = gfb_fb_setcolreg,
 	.fb_fillrect  = gfb_fb_fillrect,
 	.fb_copyarea  = gfb_fb_copyarea,
 	.fb_imageblit = gfb_fb_imageblit,
@@ -450,8 +450,11 @@ ssize_t gfb_fb_node_show(struct device *dev,
                          char *buf)
 {
 	unsigned fb_node;
-	struct gfb_data *data = dev_get_drvdata(dev);
-    if (!atomic_read(&data->usb_active))
+        struct gfb_data *data = dev_get_gfbdata(dev);
+        if (!data)
+                return -ENODATA;
+
+        if (!atomic_read(&data->usb_active))
 		return -EPERM;
 	fb_node = data->fb_info->node;
 
@@ -467,8 +470,11 @@ ssize_t gfb_fb_update_rate_show(struct device *dev,
                                 char *buf)
 {
 	unsigned fb_update_rate;
-	struct gfb_data *data = dev_get_drvdata(dev);
-    if (!atomic_read(&data->usb_active))
+        struct gfb_data *data = dev_get_gfbdata(dev);
+        if (!data)
+                return -ENODATA;
+
+        if (!atomic_read(&data->usb_active))
 		return -EPERM;
 	fb_update_rate = data->fb_update_rate;
 
@@ -476,11 +482,9 @@ ssize_t gfb_fb_update_rate_show(struct device *dev,
 }
 EXPORT_SYMBOL_GPL(gfb_fb_update_rate_show);
 
-static ssize_t gfb_set_fb_update_rate(struct hid_device *hdev,
+static ssize_t gfb_set_fb_update_rate(struct gfb_data *data,
 				      unsigned fb_update_rate)
 {
-	struct gfb_data *data = hid_get_gfbdata(hdev);
-
 	if (fb_update_rate > GFB_UPDATE_RATE_LIMIT)
 		data->fb_update_rate = GFB_UPDATE_RATE_LIMIT;
 	else if (fb_update_rate == 0)
@@ -497,16 +501,13 @@ ssize_t gfb_fb_update_rate_store(struct device *dev,
                                  struct device_attribute *attr,
                                  const char *buf, size_t count)
 {
-	struct hid_device *hdev;
 	int i;
 	unsigned u;
 	ssize_t set_result;
 
-	hdev = container_of(dev, struct hid_device, dev);
-
-	/* If we have an invalid pointer we'll return ENODATA */
-	if (hdev == NULL || &(hdev->dev) != dev)
-		return -ENODATA;
+        struct gfb_data *data = dev_get_gfbdata(dev);
+        if (!data)
+                return -ENODATA;
 
 	i = sscanf(buf, "%u", &u);
 	if (i != 1) {
@@ -514,7 +515,7 @@ ssize_t gfb_fb_update_rate_store(struct device *dev,
 		return -1;
 	}
 
-	set_result = gfb_set_fb_update_rate(hdev, u);
+	set_result = gfb_set_fb_update_rate(data, u);
 
 	if (set_result < 0)
 		return set_result;
@@ -687,10 +688,11 @@ EXPORT_SYMBOL_GPL(gfb_probe);
 
 void gfb_remove(struct gfb_data *data)
 {
-    data->virtualized = true; // Device gone, we wont do any io
+        data->virtualized = true; // Device gone, we wont do any io
 	atomic_set(&data->usb_active, 0);
 
-	/* usb_free_urb(data->fb_urb); */
+	usb_free_urb(data->fb_urb);
+	kfree(data);
 }
 EXPORT_SYMBOL_GPL(gfb_remove);
 
