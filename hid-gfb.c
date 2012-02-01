@@ -316,7 +316,7 @@ static int gfb_fb_setcolreg(unsigned regno, unsigned red, unsigned green,
 			    struct fb_info *info)
 {
 	struct gfb_data *par = info->par;
-    if (!atomic_read(&par->usb_active))
+        if (!atomic_read(&par->usb_active))
 		return -EPERM;
 
 	if (regno >= 16)
@@ -411,7 +411,7 @@ static int gfb_fb_release(struct fb_info *info, int user)
 	if (dev->virtualized && (dev->fb_count == 0))
 		schedule_delayed_work(&dev->free_framebuffer_work, HZ);
 
-    return 0;
+        return 0;
 }
 
 /*
@@ -512,7 +512,7 @@ ssize_t gfb_fb_update_rate_store(struct device *dev,
 	i = sscanf(buf, "%u", &u);
 	if (i != 1) {
 		dev_warn(dev, GFB_NAME " unrecognized input: %s", buf);
-		return -1;
+		return -EINVAL;
 	}
 
 	set_result = gfb_set_fb_update_rate(data, u);
