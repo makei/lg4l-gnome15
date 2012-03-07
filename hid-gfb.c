@@ -59,9 +59,9 @@ static void gfb_fb_urb_completion(struct urb *urb)
 
 static void gfb_free_framebuffer_work(struct work_struct *work)
 {
-	struct gfb_data *dev = container_of(work, struct gfb_data,
-					     free_framebuffer_work.work);
-	struct fb_info *info = dev->fb_info;
+	struct gfb_data *data = container_of(work, struct gfb_data,
+                                             free_framebuffer_work.work);
+	struct fb_info *info = data->fb_info;
 	/* int node = info->node; */
 
 	unregister_framebuffer(info);
@@ -74,15 +74,18 @@ static void gfb_free_framebuffer_work(struct work_struct *work)
 		vfree(info->screen_base);
 
 	fb_destroy_modelist(&info->modelist);
-		fb_deferred_io_cleanup(info);
+        fb_deferred_io_cleanup(info);
 
-	dev->fb_info = 0;
+	usb_free_urb(data->fb_urb);
 
-	vfree(dev->fb_bitmap);
-	kfree(dev->fb_vbitmap);
-	/* Assume info structure is freed after this point */
+	vfree(data->fb_bitmap);
+	kfree(data->fb_vbitmap);
+	
 	framebuffer_release(info);
+
+        kfree(data);
 }
+
 /* Send the current framebuffer vbitmap as an interrupt message */
 static int gfb_fb_send(struct gfb_data *data)
 {
@@ -96,7 +99,7 @@ static int gfb_fb_send(struct gfb_data *data)
 	int retval = 0;
 	unsigned long irq_flags;
 
-    if (!atomic_read(&data->usb_active))
+        if (!atomic_read(&data->usb_active))
 		return -EPERM;
 
 	/*
@@ -391,7 +394,6 @@ static void gfb_fb_imageblit(struct fb_info *info, const struct fb_image *image)
 static int gfb_fb_open(struct fb_info *info, int user)
 {
 	struct gfb_data *dev = info->par;
-
 
 	/* If the USB device is gone, we don't accept new opens */
 	if (dev->virtualized)
@@ -691,8 +693,10 @@ void gfb_remove(struct gfb_data *data)
         data->virtualized = true; // Device gone, we wont do any io
 	atomic_set(&data->usb_active, 0);
 
-	usb_free_urb(data->fb_urb);
-	kfree(data);
+        /* the rest of the cleanup is in gfb_free_framebuffer_work */
+        /* either now, or when the last file handle holding the fb gets closed */
+        if (data->fb_count == 0)
+                schedule_delayed_work(&data->free_framebuffer_work, HZ);
 }
 EXPORT_SYMBOL_GPL(gfb_remove);
 

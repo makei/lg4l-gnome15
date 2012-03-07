@@ -22,14 +22,12 @@ struct gfb_data {
 	struct fb_deferred_io fb_defio;
 	struct urb *fb_urb;
 	spinlock_t fb_urb_lock;
-    int fb_vbitmap_busy;
+        int fb_vbitmap_busy;
 
-    bool virtualized; /* true when physical usb device not present */
-
-    int fb_count; /* open counter */
+        bool virtualized; /* true when physical usb device not present */
+        int fb_count; /* open counter */
 
 	struct delayed_work free_framebuffer_work;
-
 
 	atomic_t usb_active; /* 0 = update virtual buffer, but no usb traffic */
 	atomic_t lost_pixels; /* 1 = a render op failed. Need screen refresh */
