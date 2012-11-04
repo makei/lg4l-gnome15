@@ -2,33 +2,23 @@
 
 # run me as root
 
-# first unbind them all
-for dev in `ls /sys/bus/hid/drivers/generic-usb/ | egrep '046D:(C21C|C222|C229|C22B|C227|C22D|C22E)'`
-do echo -n $dev > /sys/bus/hid/drivers/generic-usb/unbind
-done
+SFS_HID_DEV="/sys/bus/hid/devices"
+SFS_HID_DRV="/sys/bus/hid/drivers"
+SFS_HID_GEN="$SFS_HID_DRV/hid-generic"
 
-# now bind to correct module
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C21C'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g13/bind
-done
+rebind()
+{
+  for dev in $(ls $SFS_HID_GEN | egrep $1) ; do
+    echo -n $dev > $SFS_HID_GEN/unbind
+  done
+  
+  for dev in $(ls $SFS_HID_DEV | egrep $1) ; do
+    echo -n $dev > $SFS_HID_DRV/$2/bind
+  done
+}
 
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C222'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g15/bind
-done
-
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C227'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g15v2/bind
-done
-
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C229'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g19/bind
-done
-
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C22B'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g110/bind
-done
+rebind 046D:C21C hid-g13
+rebind 046D:C222 hid-g15
+#rebind 046D:C227 hid-g15v2
+rebind 046D:C229 hid-g19
+rebind 046D:C22B hid-g110
