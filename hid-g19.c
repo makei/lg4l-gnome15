@@ -107,7 +107,6 @@ struct g19_data {
 	/* Housekeeping stuff */
 	struct completion ready;
 	int ready_stages;
-	int need_reset;
 };
 
 /* Convenience macros */
@@ -650,14 +649,6 @@ static int g19_raw_event(struct hid_device *hdev,
 
 	spin_lock_irqsave(&gdata->lock, irq_flags);
 
-	if (unlikely(g19data->need_reset)) {
-		g19_rgb_send(hdev);
-		g19_led_send(hdev);
-		g19data->need_reset = 0;
-		spin_unlock_irqrestore(&gdata->lock, irq_flags);
-		return 1;
-	}
-
 	if (unlikely(g19data->ready_stages != G19_READY_STAGE_3)) {
 		switch (report->id) {
 		case 6:
@@ -1145,16 +1136,30 @@ static void g19_remove(struct hid_device *hdev)
 	hid_hw_stop(hdev);
 }
 
-static void __UNUSED g19_post_reset_start(struct hid_device *hdev)
+static void g19_post_reset_start(struct hid_device *hdev)
 {
         unsigned long irq_flags;
 	struct gcommon_data *gdata = hid_get_gdata(hdev);
-	struct g19_data *g19data = gdata->data;
 
 	spin_lock_irqsave(&gdata->lock, irq_flags);
-	g19data->need_reset = 1;
+        g19_rgb_send(hdev);
+        g19_led_send(hdev);
 	spin_unlock_irqrestore(&gdata->lock, irq_flags);
 }
+
+#ifdef CONFIG_PM
+static int g19_resume(struct hid_device *hdev) 
+{
+        g19_post_reset_start(hdev);
+        return 0;
+}
+
+static int g19_reset_resume(struct hid_device *hdev) 
+{
+        g19_post_reset_start(hdev);
+        return 0;
+}
+#endif
 
 static const struct hid_device_id g19_devices[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G19_LCD)
@@ -1169,6 +1174,11 @@ static struct hid_driver g19_driver = {
 	.probe			= g19_probe,
 	.remove			= g19_remove,
 	.raw_event		= g19_raw_event,
+#ifdef CONFIG_PM
+	/* .suspend                = g19_suspend, */
+	.resume                 = g19_resume,
+	.reset_resume           = g19_reset_resume,
+#endif
 };
 
 static int __init g19_init(void)
