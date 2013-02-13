@@ -1,9 +1,6 @@
 ifneq ($(KERNELRELEASE),)
 # kbuild part
 
-KVERSION = $(shell uname -r)
-#EXTRA_CFLAGS=-I$(KDIR)/drivers/hid
-
 obj-m := hid-g13.o hid-g15.o hid-g19.o hid-gfb.o hid-g110.o hid-ginput.o
 
 else
