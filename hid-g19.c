@@ -701,7 +701,34 @@ static void g19_initialize_keymap(struct gcommon_data *gdata)
 	__clear_bit(KEY_RESERVED, gdata->input_dev->keybit);
 }
 
-/* Unlock the urb so we can reuse it */
+
+#ifdef CONFIG_PM
+
+static void g19_post_reset_start(struct hid_device *hdev)
+{
+        unsigned long irq_flags;
+	struct gcommon_data *gdata = hid_get_gdata(hdev);
+
+	spin_lock_irqsave(&gdata->lock, irq_flags);
+        g19_rgb_send(hdev);
+        g19_led_send(hdev);
+	spin_unlock_irqrestore(&gdata->lock, irq_flags);
+}
+
+static int g19_resume(struct hid_device *hdev) 
+{
+        g19_post_reset_start(hdev);
+        return 0;
+}
+
+static int g19_reset_resume(struct hid_device *hdev) 
+{
+        g19_post_reset_start(hdev);
+        return 0;
+}
+
+#endif /* CONFIG_PM */
+
 static void g19_ep1_urb_completion(struct urb *urb)
 {
         /* don't process unlinked or failed urbs */
@@ -829,7 +856,7 @@ static int g19_probe(struct hid_device *hdev,
 	if (error) {
 		dev_err(&hdev->dev, G19_NAME " failed to open input interrupt pipe for key and joystick events\n");
 		error = -EINVAL;
-		goto err_cleanup_ep1_urb;
+		goto err_cleanup_hw_start;
 	}
 
 	/* Set up the input device for the key I/O */
@@ -837,7 +864,7 @@ static int g19_probe(struct hid_device *hdev,
 	if (gdata->input_dev == NULL) {
 		dev_err(&hdev->dev, G19_NAME " error initializing the input device");
 		error = -ENOMEM;
-		goto err_cleanup_ep1_urb;
+		goto err_cleanup_hw_start;
 	}
 
         input_set_drvdata(gdata->input_dev, gdata);
@@ -978,7 +1005,7 @@ static int g19_probe(struct hid_device *hdev,
 	error = sysfs_create_group(&(hdev->dev.kobj), &g19_attr_group);
 	if (error) {
 		dev_err(&hdev->dev, G19_NAME " failed to create sysfs group attributes\n");
-		goto err_cleanup_registered_leds;
+		goto err_cleanup_gfb;
 	}
 
 	/*
@@ -1060,6 +1087,9 @@ static int g19_probe(struct hid_device *hdev,
 	/* Everything went well */
 	return 0;
 
+err_cleanup_gfb:
+        gfb_remove(gdata->gfb_data);
+
 err_cleanup_registered_leds:
 	for (i = 0; i < led_num; i++)
 		led_classdev_unregister(g19data->led_cdev[i]);
@@ -1082,6 +1112,9 @@ err_cleanup_input_dev_data:
 err_cleanup_input_dev:
 	input_free_device(gdata->input_dev);
 
+err_cleanup_hw_start:
+        hid_hw_stop(hdev);
+
 err_cleanup_ep1_urb:
 	usb_free_urb(g19data->ep1_urb);
 
@@ -1100,22 +1133,17 @@ err_no_cleanup:
 
 static void g19_remove(struct hid_device *hdev)
 {
-	struct gcommon_data *gdata;
-	struct g19_data *g19data;
+	struct gcommon_data *gdata = hid_get_drvdata(hdev);
+	struct g19_data *g19data = gdata->data;
 	int i;
 
 	hdev->ll_driver->close(hdev);
 
+	usb_poison_urb(g19data->ep1_urb);
+
 	sysfs_remove_group(&(hdev->dev.kobj), &g19_attr_group);
 
-	/* Get the internal g19 data buffer */
-	gdata = hid_get_drvdata(hdev);
-        g19data = gdata->data;
-
-	input_unregister_device(gdata->input_dev);
-        ginput_free(gdata);
-
-	kfree(gdata->name);
+	gfb_remove(gdata->gfb_data);
 
 	/* Clean up the leds */
 	for (i = 0; i < LED_COUNT; i++) {
@@ -1124,42 +1152,19 @@ static void g19_remove(struct hid_device *hdev)
 		kfree(g19data->led_cdev[i]);
 	}
 
-	gfb_remove(gdata->gfb_data);
-
-	sysfs_remove_group(&(hdev->dev.kobj), &g19_attr_group);
+	input_unregister_device(gdata->input_dev);
+        ginput_free(gdata);
 
 	usb_free_urb(g19data->ep1_urb);
 
 	/* Finally, clean up the g19 data itself */
         kfree(g19data);
+	kfree(gdata->name);
 	kfree(gdata);
+
 	hid_hw_stop(hdev);
 }
 
-static void g19_post_reset_start(struct hid_device *hdev)
-{
-        unsigned long irq_flags;
-	struct gcommon_data *gdata = hid_get_gdata(hdev);
-
-	spin_lock_irqsave(&gdata->lock, irq_flags);
-        g19_rgb_send(hdev);
-        g19_led_send(hdev);
-	spin_unlock_irqrestore(&gdata->lock, irq_flags);
-}
-
-#ifdef CONFIG_PM
-static int g19_resume(struct hid_device *hdev) 
-{
-        g19_post_reset_start(hdev);
-        return 0;
-}
-
-static int g19_reset_resume(struct hid_device *hdev) 
-{
-        g19_post_reset_start(hdev);
-        return 0;
-}
-#endif
 
 static const struct hid_device_id g19_devices[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G19_LCD)
@@ -1174,11 +1179,12 @@ static struct hid_driver g19_driver = {
 	.probe			= g19_probe,
 	.remove			= g19_remove,
 	.raw_event		= g19_raw_event,
+
 #ifdef CONFIG_PM
-	/* .suspend                = g19_suspend, */
 	.resume                 = g19_resume,
 	.reset_resume           = g19_reset_resume,
 #endif
+
 };
 
 static int __init g19_init(void)
