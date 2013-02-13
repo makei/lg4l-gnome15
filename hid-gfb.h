@@ -9,28 +9,32 @@
 /* Per device data structure */
 struct gfb_data {
 	struct hid_device *hdev;
+	struct kref kref;
 
 	/* Framebuffer stuff */
-	int panel_type;
+	int panel_type;         /* GFB_PANEL_TYPE_160_43_1 or GFB_PANEL_TYPE_320_240_16 */
 
-	int vbitmap_size;
-
-	u8 fb_update_rate;
-	u8 *fb_vbitmap;
-	u8 *fb_bitmap;
 	struct fb_info *fb_info;
-	struct fb_deferred_io fb_defio;
-	struct urb *fb_urb;
-	spinlock_t fb_urb_lock;
-        int fb_vbitmap_busy;
 
-        bool virtualized; /* true when physical usb device not present */
-        int fb_count; /* open counter */
+	struct fb_deferred_io fb_defio;
+	u8 fb_update_rate;
+
+	u8 *fb_bitmap;          /* device-dependent bitmap */
+	u8 *fb_vbitmap;         /* userspace bitmap */
+        int fb_vbitmap_busy;    /* soft-lock for vbitmap; protected by fb_urb_lock */
+	size_t fb_vbitmap_size; /* size of vbitmap */
 
 	struct delayed_work free_framebuffer_work;
 
-	atomic_t usb_active; /* 0 = update virtual buffer, but no usb traffic */
-	atomic_t lost_pixels; /* 1 = a render op failed. Need screen refresh */
+        /* USB stuff */
+	struct urb *fb_urb;
+	spinlock_t fb_urb_lock;
+
+        /* Userspace stuff */
+        int fb_count;      /* open file handle counter */
+        bool virtualized;  /* true when physical device not present */
+
+	/* atomic_t usb_active; /\* 0 = update virtual buffer, but no usb traffic *\/ */
 };
 
 ssize_t gfb_fb_node_show(struct device *dev,
