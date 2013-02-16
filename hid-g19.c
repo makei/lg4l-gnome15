@@ -1125,9 +1125,7 @@ err_cleanup_gdata:
 	kfree(gdata);
 
 err_no_cleanup:
-
 	hid_set_drvdata(hdev, NULL);
-
 	return error;
 }
 
@@ -1202,4 +1200,5 @@ module_exit(g19_exit);
 MODULE_DESCRIPTION("Logitech G19 HID Driver");
 MODULE_AUTHOR("Alistair Buxton (a.j.buxton@gmail.com)");
 MODULE_AUTHOR("Thomas Berger (tbe@boreus.de)");
+MODULE_AUTHOR("Ciubotariu Ciprian (cheepeero@gmx.net)");
 MODULE_LICENSE("GPL v2");
