@@ -120,7 +120,6 @@ struct g13_data {
 	/* Housekeeping stuff */
 	struct completion ready;
 	int ready_stages;
-	int need_reset;
 };
 
 /* Convenience macros */
@@ -581,14 +580,6 @@ static int g13_raw_event(struct hid_device *hdev,
 
 	spin_lock_irqsave(&gdata->lock, irq_flags);
 
-	if (unlikely(g13data->need_reset)) {
-		g13_rgb_send(hdev);
-		g13_led_send(hdev);
-		g13data->need_reset = 0;
-		spin_unlock_irqrestore(&gdata->lock, irq_flags);
-		return 1;
-	}
-
 	if (unlikely(g13data->ready_stages != G13_READY_STAGE_3)) {
 		switch (report->id) {
 		case 6:
@@ -990,34 +981,27 @@ err_cleanup_input_dev:
 	input_free_device(gdata->input_dev);
 
 err_cleanup_g13data:
-	/* Make sure we clean up the allocated data structure */
 	kfree(g13data);
 
 err_cleanup_gdata:
-	/* Make sure we clean up the allocated data structure */
 	kfree(gdata);
 
 err_no_cleanup:
-
 	hid_set_drvdata(hdev, NULL);
-
 	return error;
 }
 
 static void g13_remove(struct hid_device *hdev)
 {
-	struct gcommon_data *gdata;
-	struct g13_data *g13data;
+	struct gcommon_data *gdata = hid_get_drvdata(hdev);
+	struct g13_data *g13data = gdata->data;;
 	int i;
 
-	/* Get the internal g13 data buffer */
-	gdata = hid_get_drvdata(hdev);
-        g13data = gdata->data;
+	hdev->ll_driver->close(hdev);
 
-	input_unregister_device(gdata->input_dev);
-        ginput_free(gdata);
+	sysfs_remove_group(&(hdev->dev.kobj), &g13_attr_group);
 
-	kfree(gdata->name);
+	gfb_remove(gdata->gfb_data);
 
 	/* Clean up the leds */
 	for (i = 0; i < LED_COUNT; i++) {
@@ -1026,46 +1010,43 @@ static void g13_remove(struct hid_device *hdev)
 		kfree(g13data->led_cdev[i]);
 	}
 
-	gfb_remove(gdata->gfb_data);
+	input_unregister_device(gdata->input_dev);
+        ginput_free(gdata);
 
-
-	hdev->ll_driver->close(hdev);
+	kfree(g13data);
+	kfree(gdata->name);
+	kfree(gdata);
 
 	hid_hw_stop(hdev);
-
-	sysfs_remove_group(&(hdev->dev.kobj), &g13_attr_group);
-
-//	/* Get the internal g13 data buffer */
-//	data = hid_get_drvdata(hdev);
-//
-//	input_unregister_device(data->input_dev);
-//
-//	kfree(data->name);
-//
-//	/* Clean up the leds */
-//	for (i = 0; i < LED_COUNT; i++) {
-//		led_classdev_unregister(data->led_cdev[i]);
-//		kfree(data->led_cdev[i]->name);
-//		kfree(data->led_cdev[i]);
-//	}
-//
-//	gfb_remove(data->gfb_data);
-
-	/* Finally, clean up the g13 data itself */
-	kfree(g13data);
-	kfree(gdata);
 }
 
-static void __UNUSED g13_post_reset_start(struct hid_device *hdev)
+#ifdef CONFIG_PM
+
+static void g13_post_reset_start(struct hid_device *hdev)
 {
         unsigned long irq_flags;
 	struct gcommon_data *gdata = hid_get_gdata(hdev);
 	struct g13_data *g13data = gdata->data;
 
 	spin_lock_irqsave(&gdata->lock, irq_flags);
-	g13data->need_reset = 1;
+		g13_rgb_send(hdev);
+		g13_led_send(hdev);
 	spin_unlock_irqrestore(&gdata->lock, irq_flags);
 }
+
+static int g13_resume(struct hid_device *hdev) 
+{
+        g13_post_reset_start(hdev);
+        return 0;
+}
+
+static int g13_reset_resume(struct hid_device *hdev) 
+{
+        g13_post_reset_start(hdev);
+        return 0;
+}
+
+#endif /* CONFIG_PM */
 
 static const struct hid_device_id g13_devices[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G13)
@@ -1080,6 +1061,11 @@ static struct hid_driver g13_driver = {
 	.probe			= g13_probe,
 	.remove			= g13_remove,
 	.raw_event		= g13_raw_event,
+
+#ifdef CONFIG_PM
+	.resume                 = g13_resume,
+	.reset_resume           = g13_reset_resume,
+#endif
 };
 
 static int __init g13_init(void)
@@ -1096,4 +1082,5 @@ module_init(g13_init);
 module_exit(g13_exit);
 MODULE_DESCRIPTION("Logitech G13 HID Driver");
 MODULE_AUTHOR("Rick L Vinyard Jr (rvinyard@cs.nmsu.edu)");
+MODULE_AUTHOR("Ciubotariu Ciprian (cheepeero@gmx.net)");
 MODULE_LICENSE("GPL");
