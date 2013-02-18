@@ -411,10 +411,6 @@ ssize_t ginput_set_keymap_switching(struct gcommon_data *gdata, unsigned k)
 	struct ginput_data * idata = &gdata->input_data;
 	idata->keymap_switching = k;
 
-	if (idata->keymap_switching && idata->notify_keymap_switched) {
-		(*idata->notify_keymap_switched)(gdata, k);
-	}
-
 	return 0;
 }
 EXPORT_SYMBOL_GPL(ginput_set_keymap_switching);
