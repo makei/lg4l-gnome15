@@ -4,16 +4,16 @@
 struct gcommon_data;
 
 struct ginput_data {
-  int key_count;                /* no of keys in the kernel keymap */
-  int * scancode_state;         /* length = key_count */
-  int * keycode;                /* length = 3 * key_count */
+	int key_count;                /* no of keys in the kernel keymap */
+	int * scancode_state;         /* length = key_count */
+	int * keycode;                /* length = 3 * key_count */
 
-  u8 curkeymap;                 /* current macro keymap index */
-  u8 keymap_switching;          /* kernel keymap switch enable flag */
+	u8 curkeymap;                 /* current macro keymap index */
+	u8 keymap_switching;          /* kernel keymap switch enable flag */
 
-  /* pointer to a keymap switch notification function of the parent driver, or NULL */
-  void (*notify_keymap_switched)(struct gcommon_data * gdata, 
-                                 unsigned int index);
+	/* pointer to a keymap switch notification function of the parent driver, or NULL */
+	void (*notify_keymap_switched)(struct gcommon_data * gdata,
+	                               unsigned int index);
 };
 
 /* functions exposed by the module */
@@ -59,4 +59,4 @@ ssize_t ginput_keymap_switching_store(struct device *dev,
                                       const char *buf, size_t count);
 
 
-#endif 
+#endif

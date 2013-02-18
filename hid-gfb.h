@@ -21,18 +21,18 @@ struct gfb_data {
 
 	u8 *fb_bitmap;          /* device-dependent bitmap */
 	u8 *fb_vbitmap;         /* userspace bitmap */
-        int fb_vbitmap_busy;    /* soft-lock for vbitmap; protected by fb_urb_lock */
+	int fb_vbitmap_busy;    /* soft-lock for vbitmap; protected by fb_urb_lock */
 	size_t fb_vbitmap_size; /* size of vbitmap */
 
 	struct delayed_work free_framebuffer_work;
 
-        /* USB stuff */
+	/* USB stuff */
 	struct urb *fb_urb;
 	spinlock_t fb_urb_lock;
 
-        /* Userspace stuff */
-        int fb_count;      /* open file handle counter */
-        bool virtualized;  /* true when physical device not present */
+	/* Userspace stuff */
+	int fb_count;      /* open file handle counter */
+	bool virtualized;  /* true when physical device not present */
 
 	/* atomic_t usb_active; /\* 0 = update virtual buffer, but no usb traffic *\/ */
 };

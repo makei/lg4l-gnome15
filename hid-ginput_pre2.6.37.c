@@ -7,8 +7,8 @@ static int ginput_get_keycode(struct input_dev * dev,
 }
 
 static int ginput_setkeycode(struct input_dev *dev,
-                                   unsigned int scancode,
-                                   unsigned int keycode)
+                             unsigned int scancode,
+                             unsigned int keycode)
 {
 	unsigned long irq_flags;
 	int old_keycode;

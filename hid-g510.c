@@ -113,47 +113,47 @@ struct g510_data {
  * Keymap array indices
  */
 static const unsigned int g510_default_key_map[G510_KEYS] = {
-KEY_F1,
-KEY_F2,
-KEY_F3,
-KEY_F4,
-KEY_F5,
-KEY_F6,
-KEY_F7,
-KEY_F8,
+	KEY_F1,
+	KEY_F2,
+	KEY_F3,
+	KEY_F4,
+	KEY_F5,
+	KEY_F6,
+	KEY_F7,
+	KEY_F8,
 
-KEY_F9,
-KEY_F10,
-KEY_F11,
-KEY_F12,
-KEY_F13,
-KEY_F14,
-KEY_F15,
-KEY_F16,
+	KEY_F9,
+	KEY_F10,
+	KEY_F11,
+	KEY_F12,
+	KEY_F13,
+	KEY_F14,
+	KEY_F15,
+	KEY_F16,
 
-KEY_F17,
-KEY_F18,
-KEY_UNKNOWN,
-KEY_KBDILLUMTOGGLE,
-KEY_PROG1,
-KEY_PROG2,
-KEY_PROG3,
-KEY_RECORD,
-KEY_OK, /* L1 */
-KEY_LEFT, /* L2 */
-KEY_UP, /* L3 */
-KEY_DOWN, /* L4 */
-KEY_RIGHT, /* L5 */
-KEY_UNKNOWN,
-KEY_UNKNOWN,
-KEY_UNKNOWN
+	KEY_F17,
+	KEY_F18,
+	KEY_UNKNOWN,
+	KEY_KBDILLUMTOGGLE,
+	KEY_PROG1,
+	KEY_PROG2,
+	KEY_PROG3,
+	KEY_RECORD,
+	KEY_OK, /* L1 */
+	KEY_LEFT, /* L2 */
+	KEY_UP, /* L3 */
+	KEY_DOWN, /* L4 */
+	KEY_RIGHT, /* L5 */
+	KEY_UNKNOWN,
+	KEY_UNKNOWN,
+	KEY_UNKNOWN
 };
 
 static DEVICE_ATTR(fb_node, 0444, gfb_fb_node_show, NULL);
 
 static DEVICE_ATTR(fb_update_rate, 0666,
-		   gfb_fb_update_rate_show,
-		   gfb_fb_update_rate_store);
+                   gfb_fb_update_rate_show,
+                   gfb_fb_update_rate_store);
 
 static void g510_msg_send(struct hid_device *hdev, u8 msg, u8 value1, u8 value2)
 {
@@ -167,8 +167,8 @@ static void g510_msg_send(struct hid_device *hdev, u8 msg, u8 value1, u8 value2)
 }
 
 static void g510_led_set(struct led_classdev *led_cdev,
-			 enum led_brightness value,
-			 int led_num)
+                         enum led_brightness value,
+                         int led_num)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -194,25 +194,25 @@ static void g510_led_set(struct led_classdev *led_cdev,
 }
 
 static void g510_led_m1_brightness_set(struct led_classdev *led_cdev,
-				      enum led_brightness value)
+                                       enum led_brightness value)
 {
 	g510_led_set(led_cdev, value, G510_LED_M1);
 }
 
 static void g510_led_m2_brightness_set(struct led_classdev *led_cdev,
-				      enum led_brightness value)
+                                       enum led_brightness value)
 {
 	g510_led_set(led_cdev, value, G510_LED_M2);
 }
 
 static void g510_led_m3_brightness_set(struct led_classdev *led_cdev,
-				      enum led_brightness value)
+                                       enum led_brightness value)
 {
 	g510_led_set(led_cdev, value, G510_LED_M3);
 }
 
 static void g510_led_mr_brightness_set(struct led_classdev *led_cdev,
-				      enum led_brightness value)
+                                       enum led_brightness value)
 {
 	g510_led_set(led_cdev, value, G510_LED_MR);
 }
@@ -348,25 +348,25 @@ static const struct led_classdev g510_led_cdevs[LED_COUNT] = {
 
 
 static DEVICE_ATTR(keymap_index, 0666,
-		   ginput_keymap_index_show,
-		   ginput_keymap_index_store);
+                   ginput_keymap_index_show,
+                   ginput_keymap_index_store);
 
-static DEVICE_ATTR(keymap, 0666, 
-                   ginput_keymap_show, 
+static DEVICE_ATTR(keymap, 0666,
+                   ginput_keymap_show,
                    ginput_keymap_store);
 
 static DEVICE_ATTR(keymap_switching, 0644,
-		   ginput_keymap_switching_show,
-		   ginput_keymap_switching_store);
+                   ginput_keymap_switching_show,
+                   ginput_keymap_switching_store);
 
 /* change leds when the keymap was changed */
-static void g510_notify_keymap_switched(struct gcommon_data * gdata, 
+static void g510_notify_keymap_switched(struct gcommon_data * gdata,
                                         unsigned int index)
 {
-        struct g510_data * g510data = gdata->data;
+	struct g510_data * g510data = gdata->data;
 
-        g510data->led = 1 << index;
-        g510_msg_send(gdata->hdev, 4, ~g510data->led, 0);
+	g510data->led = 1 << index;
+	g510_msg_send(gdata->hdev, 4, ~g510data->led, 0);
 }
 
 
@@ -391,8 +391,8 @@ static ssize_t g510_name_show(struct device *dev,
 }
 
 static ssize_t g510_name_store(struct device *dev,
-			      struct device_attribute *attr,
-			      const char *buf, size_t count)
+                               struct device_attribute *attr,
+                               const char *buf, size_t count)
 {
 	unsigned long irq_flags;
 	struct gcommon_data *gdata = dev_get_drvdata(dev);
@@ -488,11 +488,11 @@ static struct attribute_group g510_attr_group = {
 };
 
 static void g510_raw_event_process_input(struct hid_device *hdev,
-                                         struct gcommon_data *gdata,
-                                         u8 *raw_data)
+        struct gcommon_data *gdata,
+        u8 *raw_data)
 {
 	struct input_dev *idev = gdata->input_dev;
-        struct ginput_data *input_data = &gdata->input_data;
+	struct ginput_data *input_data = &gdata->input_data;
 	int scancode;
 	int value;
 	int i;
@@ -562,11 +562,11 @@ static int g510_raw_event(struct hid_device *hdev,
 			if (!(g510data->ready_stages & G510_READY_SUBSTAGE_1))
 				g510data->ready_stages |= G510_READY_SUBSTAGE_1;
 			else if (g510data->ready_stages & G510_READY_SUBSTAGE_4 &&
-				 !(g510data->ready_stages & G510_READY_SUBSTAGE_5)
-				)
+			         !(g510data->ready_stages & G510_READY_SUBSTAGE_5)
+			        )
 				g510data->ready_stages |= G510_READY_SUBSTAGE_5;
 			else if (g510data->ready_stages & G510_READY_SUBSTAGE_6 &&
-				 raw_data[1] >= 0x80)
+			         raw_data[1] >= 0x80)
 				g510data->ready_stages |= G510_READY_SUBSTAGE_7;
 			break;
 		case 1:
@@ -609,7 +609,7 @@ static void g510_initialize_keymap(struct gcommon_data *gdata)
 }
 
 static int g510_probe(struct hid_device *hdev,
-		     const struct hid_device_id *id)
+                      const struct hid_device_id *id)
 {
 	unsigned long irq_flags;
 	int error;
@@ -620,9 +620,9 @@ static int g510_probe(struct hid_device *hdev,
 	struct usb_interface *intf;
 	struct usb_device *usbdev;
 	struct list_head *feature_report_list =
-		&hdev->report_enum[HID_FEATURE_REPORT].report_list;
+			    &hdev->report_enum[HID_FEATURE_REPORT].report_list;
 	struct list_head *output_report_list =
-			&hdev->report_enum[HID_OUTPUT_REPORT].report_list;
+			    &hdev->report_enum[HID_OUTPUT_REPORT].report_list;
 	struct hid_report *report;
 	char *led_name;
 
@@ -649,7 +649,7 @@ static int g510_probe(struct hid_device *hdev,
 		error = -ENOMEM;
 		goto err_cleanup_gdata;
 	}
-        gdata->data = g510data;
+	gdata->data = g510data;
 
 	spin_lock_init(&gdata->lock);
 
@@ -712,13 +712,13 @@ static int g510_probe(struct hid_device *hdev,
 	input_set_capability(gdata->input_dev, EV_KEY, KEY_UNKNOWN);
 	gdata->input_dev->evbit[0] |= BIT_MASK(EV_REP);
 
-        gdata->input_data.notify_keymap_switched = g510_notify_keymap_switched;
+	gdata->input_data.notify_keymap_switched = g510_notify_keymap_switched;
 
-        error = ginput_alloc(gdata, G510_KEYS);
-        if (error) {
+	error = ginput_alloc(gdata, G510_KEYS);
+	if (error) {
 		dev_err(&hdev->dev, G510_NAME " error allocating memory for the input device");
-                goto err_cleanup_input_dev;
-        }
+		goto err_cleanup_input_dev;
+	}
 
 	g510_initialize_keymap(gdata);
 
@@ -758,8 +758,8 @@ static int g510_probe(struct hid_device *hdev,
 			break;
 		}
 		dbg_hid(G510_NAME " Feature report: id=%u type=%u size=%u maxfield=%u report_count=%u\n",
-			report->id, report->type, report->size,
-			report->maxfield, report->field[0]->report_count);
+		        report->id, report->type, report->size,
+		        report->maxfield, report->field[0]->report_count);
 	}
 
 	if (list_empty(output_report_list)) {
@@ -773,10 +773,10 @@ static int g510_probe(struct hid_device *hdev,
 		dbg_hid(G510_NAME " output report %d found size=%u maxfield=%u\n", report->id, report->size, report->maxfield);
 		if (report->maxfield > 0) {
 			dbg_hid(G510_NAME " offset=%u size=%u count=%u type=%u\n",
-			       report->field[0]->report_offset,
-			       report->field[0]->report_size,
-			       report->field[0]->report_count,
-			       report->field[0]->report_type);
+			        report->field[0]->report_offset,
+			        report->field[0]->report_size,
+			        report->field[0]->report_count,
+			        report->field[0]->report_type);
 		}
 		switch (report->id) {
 		case 0x03:
@@ -943,7 +943,7 @@ err_cleanup_input_dev_reg:
 	input_unregister_device(gdata->input_dev);
 
 err_cleanup_input_dev_data:
-        ginput_free(gdata);
+	ginput_free(gdata);
 
 err_cleanup_input_dev:
 	input_free_device(gdata->input_dev);
@@ -964,16 +964,16 @@ err_no_cleanup:
 
 static void g510_remove(struct hid_device *hdev)
 {
-        struct gcommon_data *gdata;
+	struct gcommon_data *gdata;
 	struct g510_data *g510data;
 	int i;
 
 	/* Get the internal g510 data buffer */
 	gdata = hid_get_drvdata(hdev);
-        g510data = gdata->data;
+	g510data = gdata->data;
 
 	input_unregister_device(gdata->input_dev);
-        ginput_free(gdata);
+	ginput_free(gdata);
 
 	kfree(gdata->name);
 
@@ -1009,9 +1009,11 @@ static void __UNUSED g510_post_reset_start(struct hid_device *hdev)
 }
 
 static const struct hid_device_id g510_devices[] = {
-	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G510_LCD)
+	{
+		HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G510_LCD)
 	},
-	{ HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G510_AUDIO_LCD)
+	{
+		HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_LOGITECH_G510_AUDIO_LCD)
 	},
 	{ }
 };
