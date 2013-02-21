@@ -706,7 +706,7 @@ static int g13_probe(struct hid_device *hdev,
 	if (error) {
 		dev_err(&hdev->dev, G13_NAME " failed to open input interrupt pipe for key and joystick events\n");
 		error = -EINVAL;
-		goto err_cleanup_g13data;
+		goto err_cleanup_hw_start;
 	}
 
 	/* Set up the input device for the key I/O */
@@ -714,7 +714,7 @@ static int g13_probe(struct hid_device *hdev,
 	if (gdata->input_dev == NULL) {
 		dev_err(&hdev->dev, G13_NAME " error initializing the input device");
 		error = -ENOMEM;
-		goto err_cleanup_g13data;
+		goto err_cleanup_hw_start;
 	}
 
 	input_set_drvdata(gdata->input_dev, gdata);
@@ -881,7 +881,7 @@ static int g13_probe(struct hid_device *hdev,
 	error = sysfs_create_group(&(hdev->dev.kobj), &g13_attr_group);
 	if (error) {
 		dev_err(&hdev->dev, G13_NAME " failed to create sysfs group attributes\n");
-		goto err_cleanup_registered_leds;
+		goto err_cleanup_gfb;
 	}
 
 	/*
@@ -958,6 +958,9 @@ static int g13_probe(struct hid_device *hdev,
 	/* Everything went well */
 	return 0;
 
+err_cleanup_gfb:
+	gfb_remove(gdata->gfb_data);
+
 err_cleanup_registered_leds:
 	for (i = 0; i < led_num; i++)
 		led_classdev_unregister(g13data->led_cdev[i]);
@@ -980,6 +983,9 @@ err_cleanup_input_dev_data:
 err_cleanup_input_dev:
 	input_free_device(gdata->input_dev);
 
+err_cleanup_hw_start:
+	hid_hw_stop(hdev);
+
 err_cleanup_g13data:
 	kfree(g13data);
 
@@ -994,7 +1000,7 @@ err_no_cleanup:
 static void g13_remove(struct hid_device *hdev)
 {
 	struct gcommon_data *gdata = hid_get_drvdata(hdev);
-	struct g13_data *g13data = gdata->data;;
+	struct g13_data *g13data = gdata->data;
 	int i;
 
 	hdev->ll_driver->close(hdev);
@@ -1026,7 +1032,6 @@ static void g13_post_reset_start(struct hid_device *hdev)
 {
 	unsigned long irq_flags;
 	struct gcommon_data *gdata = hid_get_gdata(hdev);
-	struct g13_data *g13data = gdata->data;
 
 	spin_lock_irqsave(&gdata->lock, irq_flags);
 	g13_rgb_send(hdev);
