@@ -157,39 +157,36 @@ char hdata[512] = {
 /* Update fb_vbitmap from the screen_base and send to the device */
 static void gfb_fb_qvga_update(struct gfb_data *data)
 {
-	int row;
-	int col;
-	int x, y;
+	int xres, yres;
+	int col, row;
 	u16 *src, *dst;
 
-	/* Clear the vbitmap and set the necessary magic number */
-	memset(data->fb_vbitmap, 0x00, data->fb_vbitmap_size);
+	/* Set the image message header */
 	memcpy(data->fb_vbitmap, &hdata, sizeof(hdata));
 
 	/* LCD is a portrait mode one so we have to rotate the framebuffer */
 
 	src = (u16 *)data->fb_bitmap;
-	dst = (u16 *)(data->fb_vbitmap+512);
+	dst = (u16 *)(data->fb_vbitmap + sizeof(hdata));
 
-	x = data->fb_info->var.xres;
-	y = data->fb_info->var.yres;
-	for (col = 0; col < x; col++)
-		for (row = 0; row < y; row++)
-			*dst++ = *(src+col+(row*x));
+	xres = data->fb_info->var.xres;
+	yres = data->fb_info->var.yres;
+	for (col = 0; col < xres; ++col)
+		for (row = 0; row < yres; ++row)
+			*dst++ = src[row * xres + col];
 }
 
 static void gfb_fb_mono_update(struct gfb_data *data)
 {
-	int row;
-	int col;
-	int bit;
-	int x, y, ll;
-	u8 *u;
-	size_t offset;
-	u8 temp;
+	int xres, yres, ll;
+	int band, bands, col, bit;
+	u8 *dst, *src, *row_start;
+	u8 mask;
 
-	/* Clear the vbitmap and set the necessary magic number */
+	/* Clear the vbitmap (we only flip bits to 1 later on) */
 	memset(data->fb_vbitmap, 0x00, data->fb_vbitmap_size);
+
+	/* Set the magic number */
 	data->fb_vbitmap[0] = 0x03;
 
 	/*
@@ -200,54 +197,28 @@ static void gfb_fb_mono_update(struct gfb_data *data)
 	 * pixels 0,0 through 0,7 and the second byte contains the pixels 1,0
 	 * through 1,7. Within the byte, bit 0 represents 0,0; bit 1 0,1; etc.
 	 *
-	 * This loop operates in reverse to shift the lower bits into their
-	 * respective positions, shifting the lower rows into the higher bits.
-	 *
-	 * The offset is calculated for every 8 rows and is adjusted by 32 since
-	 * that is what the G15 image message expects.
+	 * The offset is adjusted by 32 within the image message.
 	 */
 
-	x = data->fb_info->var.xres;
-	y = data->fb_info->var.yres;
+	xres = data->fb_info->var.xres;
+	yres = data->fb_info->var.yres;
 	ll = data->fb_info->fix.line_length;
+	
+	dst = data->fb_vbitmap + 32;
 
-	for (row = y-1; row >= 0; row--) {
-		offset = 32 + row/8 * x;
-		u = data->fb_vbitmap + offset;
-		/*
-		 * Iterate across the screen_base columns to get the
-		 * individual bits
-		 */
-		for (col = 0; col < ll; col++) {
-			/*
-			 * We will work with a temporary value since we don't
-			 * want to modify screen_base as we shift each bit
-			 * downward.
-			 */
-			temp = data->fb_bitmap[row * ll + col];
-
-			/*
-			 * For each bit in the pixel row we will shift it onto
-			 * the appropriate by by shift the g15 byte up by 1 and
-			 * simply doing a bitwise or of the low byte
-			 */
-			for (bit = 0; bit < 8; bit++) {
-				/*Shift the g15 byte up by 1 for this new row*/
-				u[bit] <<= 1;
-				/* Bring in the new pixel of temp */
-				u[bit] |= (temp & 0x01);
-				/*
-				 * Shift temp down so the low pixel is ready
-				 * for the next byte
-				 */
-				temp >>= 1;
+	bands = (yres + 7) / 8; /* poor man's ceil(yres/8) */
+	for (band = 0; band < bands ; ++band) {
+		/* each band is 8 pixels vertically */
+		row_start = data->fb_bitmap + band * 8 * ll;
+		for (col = 0; col < xres; ++col) {
+			src = row_start + col / 8;
+			mask = 0x01 << (col % 8);
+			for (bit = 0 ; bit < 8 ; ++bit) {
+				if (*src & mask) 
+					*dst |= (0x01 << bit);
+				src += ll;
 			}
-
-			/*
-			 * The last byte represented 8 vertical pixels so we'll
-			 * jump ahead 8
-			 */
-			u += 8;
+			++dst;
 		}
 	}
 }
@@ -572,47 +543,47 @@ struct gfb_data *gfb_probe(struct hid_device *hdev,
 	switch (panel_type) {
 	case GFB_PANEL_TYPE_160_43_1:
 		data->fb_info->fix = (struct fb_fix_screeninfo) {
-			.id = "GFB_MONO",
-			 .type = FB_TYPE_PACKED_PIXELS,
-			  .visual = FB_VISUAL_MONO01,
-			   .xpanstep = 0,
-			    .ypanstep = 0,
-			     .ywrapstep = 0,
-			      .line_length = 32,
-			       .accel = FB_ACCEL_NONE,
+ 			.id = "GFB_MONO",
+			.type = FB_TYPE_PACKED_PIXELS,
+			.visual = FB_VISUAL_MONO01,
+			.xpanstep = 0,
+			.ypanstep = 0,
+			.ywrapstep = 0,
+			.line_length = 32, /*   = xres * bpp/8  + 12 bytes padding */
+			.accel = FB_ACCEL_NONE,
 		};
 		data->fb_info->var = (struct fb_var_screeninfo) {
 			.xres = 160,
-			 .yres = 43,
-			  .xres_virtual = 160,
-			   .yres_virtual = 43,
-			    .bits_per_pixel = 1,
+			.yres = 43,
+			.xres_virtual = 160,
+			.yres_virtual = 43,
+			.bits_per_pixel = 1,
 		};
-		data->fb_vbitmap_size = 992;
+		data->fb_vbitmap_size = 992; /*   = 32 + ceil(yres/8) * xres   */
 		break;
 	case GFB_PANEL_TYPE_320_240_16:
 		data->fb_info->fix = (struct fb_fix_screeninfo) {
 			.id = "GFB_QVGA",
-			 .type = FB_TYPE_PACKED_PIXELS,
-			  .visual = FB_VISUAL_TRUECOLOR,
-			   .xpanstep = 0,
-			    .ypanstep = 0,
-			     .ywrapstep = 0,
-			      .line_length = 640,
-			       .accel = FB_ACCEL_NONE,
+			.type = FB_TYPE_PACKED_PIXELS,
+			.visual = FB_VISUAL_TRUECOLOR,
+			.xpanstep = 0,
+			.ypanstep = 0,
+			.ywrapstep = 0,
+			.line_length = 640, /*   = xres * bpp/8   */
+			.accel = FB_ACCEL_NONE,
 		};
 		data->fb_info->var = (struct fb_var_screeninfo) {
 			.xres = 320,
-			 .yres = 240,
-			  .xres_virtual = 320,
-			   .yres_virtual = 240,
-			    .bits_per_pixel = 16,
-			     .red        = {11, 5, 0}, /* RGB565 */
-			      .green      = { 5, 6, 0},
-			       .blue       = { 0, 5, 0},
-			        .transp     = { 0, 0, 0},
+			.yres = 240,
+			.xres_virtual = 320,
+			.yres_virtual = 240,
+			.bits_per_pixel = 16,
+			.red        = {11, 5, 0}, /* RGB565 */
+			.green      = { 5, 6, 0},
+			.blue       = { 0, 5, 0},
+			.transp     = { 0, 0, 0},
 		};
-		data->fb_vbitmap_size = 154112;
+		data->fb_vbitmap_size = 154112; /*   = yres * line_length + sizeof(hdata)   */
 		break;
 	default:
 		dev_err(&hdev->dev, GFB_NAME ": ERROR: unknown panel type\n");
