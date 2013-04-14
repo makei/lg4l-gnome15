@@ -21,6 +21,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 #include <linux/usb.h>
@@ -178,17 +179,25 @@ static int g19_input_get_keycode(struct input_dev * dev,
                                  unsigned int * keycode)
 {
 	int retval;
-
+	
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+	
 	struct input_keymap_entry ke = {
 		.flags    = 0,
 		.len      = sizeof(scancode),
 		.index    = scancode,
 		.scancode = { scancode },
 	};
-	memcpy(ke.scancode,&scancode,sizeof(scancode));
+	
 	retval   = input_get_keycode(dev, &ke);
 	*keycode = ke.keycode;
-
+	
+#else
+	
+	retval   = input_get_keycode(dev, scancode, keycode);
+	
+#endif
+	
 	return retval;
 }
 
@@ -475,8 +484,8 @@ static const struct led_classdev g19_led_cdevs[LED_COUNT] = {
 };
 
 static int g19_input_setkeycode(struct input_dev *dev,
-				unsigned int scancode,
-				unsigned int keycode)
+				int scancode,
+				int keycode)
 {
   unsigned long irq_flags;
 	int old_keycode;
@@ -525,8 +534,8 @@ static int g19_input_getkeycode(struct input_dev *dev,
 }
 #else
 static int g19_input_getkeycode(struct input_dev *dev,
-				unsigned int scancode,
-				unsigned int *keycode)
+				int scancode,
+				int *keycode)
 {
 	struct g19_data *data = input_get_g19data(dev);
 
@@ -1104,7 +1113,7 @@ static void g19_ep1_urb_completion(struct urb *urb)
 		        g19_handle_key_event(data, idev, 24+i, data->ep1keys[0]&(1<<i));
 
                 input_sync(idev);
-
+                
                 usb_submit_urb(urb, GFP_ATOMIC);
         }
 }
@@ -1474,11 +1483,6 @@ static void g19_remove(struct hid_device *hdev)
 	struct g19_data *data;
 	int i;
 
-	hdev->ll_driver->close(hdev);
-
-
-	sysfs_remove_group(&(hdev->dev.kobj), &g19_attr_group);
-
 	/* Get the internal g19 data buffer */
 	data = hid_get_drvdata(hdev);
 
@@ -1494,8 +1498,10 @@ static void g19_remove(struct hid_device *hdev)
 	}
 
 	gfb_remove(data->gfb_data);
-	/* usb_free_urb(data->ep1_urb); */
 
+	hdev->ll_driver->close(hdev);
+
+	hid_hw_stop(hdev);
 
 	sysfs_remove_group(&(hdev->dev.kobj), &g19_attr_group);
 
@@ -1503,10 +1509,7 @@ static void g19_remove(struct hid_device *hdev)
 
 	/* Finally, clean up the g19 data itself */
 	kfree(data);
-	hid_hw_stop(hdev);
 }
-
-EXPORT_SYMBOL_GPL(g19_remove);
 
 static void g19_post_reset_start(struct hid_device *hdev)
 {
@@ -1547,5 +1550,4 @@ module_init(g19_init);
 module_exit(g19_exit);
 MODULE_DESCRIPTION("Logitech G19 HID Driver");
 MODULE_AUTHOR("Alistair Buxton (a.j.buxton@gmail.com)");
-MODULE_AUTHOR("Thomas Berger (tbe@boreus.de)");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

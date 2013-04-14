@@ -32,3 +32,8 @@ for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C22B'`
 do 
    echo -n $dev > /sys/bus/hid/drivers/hid-g110/bind
 done
+
+for dev in `ls /sys/bus/hid/devices/ | egrep '046D:(C22D|C22E)'`
+do 
+   echo -n $dev > /sys/bus/hid/drivers/hid-g510/bind
+done

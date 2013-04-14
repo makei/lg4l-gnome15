@@ -21,6 +21,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 #include <linux/usb.h>
@@ -297,7 +298,7 @@ static void g510_rgb_send(struct hid_device *hdev)
 }
 
 static void g510_led_bl_brightness_set(struct led_classdev *led_cdev,
-				      int value)
+				      enum led_brightness value)
 {
 	struct device *dev;
 	struct hid_device *hdev;

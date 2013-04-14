@@ -43,7 +43,6 @@ void usbhid_submit_report
 (struct hid_device *hid, struct hid_report *report, unsigned char dir);
 int usbhid_get_power(struct hid_device *hid);
 void usbhid_put_power(struct hid_device *hid);
-struct usb_interface *usbhid_find_interface(int minor);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
 struct usb_interface *usbhid_find_interface(int minor);

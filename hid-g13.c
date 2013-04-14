@@ -20,6 +20,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 #include <linux/usb.h>
@@ -194,7 +195,7 @@ static int g13_input_get_keycode(struct input_dev * dev,
 		.flags    = 0,
 		.len      = sizeof(scancode),
 		.index    = scancode,
-		.scancode = scancode,
+		.scancode = { scancode },
 	};
 	
 	retval   = input_get_keycode(dev, &ke);
@@ -317,7 +318,7 @@ static void g13_rgb_send(struct hid_device *hdev)
 }
 
 static void g13_led_bl_brightness_set(struct led_classdev *led_cdev,
-				      int value)
+		enum led_brightness value)
 {
 	struct device *dev;
 	struct hid_device *hdev;
@@ -365,7 +366,6 @@ static enum led_brightness g13_led_bl_brightness_get(struct led_classdev *led_cd
 		return data->rgb[2];
 	else
 		dev_info(dev, G13_NAME " error retrieving LED brightness\n");
-
 	return LED_OFF;
 }
 
@@ -881,13 +881,11 @@ static void g13_handle_key_event(struct g13_data *data,
 	}
 
 	/* Only report mapped keys */
-	if (keycode != KEY_RESERVED) {
+	if (keycode != KEY_RESERVED)
 		input_report_key(idev, keycode, value);
-	}
 	/* Or report MSC_SCAN on keypress of an unmapped key */
-	else if (data->scancode_state[scancode] == 0 && value) {
+	else if (data->scancode_state[scancode] == 0 && value)
 		input_event(idev, EV_MSC, MSC_SCAN, scancode);
-	}
 
 	data->scancode_state[scancode] = value;
 }
@@ -1385,28 +1383,11 @@ static void g13_remove(struct hid_device *hdev)
 
 	gfb_remove(data->gfb_data);
 
-
 	hdev->ll_driver->close(hdev);
 
 	hid_hw_stop(hdev);
 
 	sysfs_remove_group(&(hdev->dev.kobj), &g13_attr_group);
-
-//	/* Get the internal g13 data buffer */
-//	data = hid_get_drvdata(hdev);
-//
-//	input_unregister_device(data->input_dev);
-//
-//	kfree(data->name);
-//
-//	/* Clean up the leds */
-//	for (i = 0; i < LED_COUNT; i++) {
-//		led_classdev_unregister(data->led_cdev[i]);
-//		kfree(data->led_cdev[i]->name);
-//		kfree(data->led_cdev[i]);
-//	}
-//
-//	gfb_remove(data->gfb_data);
 
 	/* Finally, clean up the g13 data itself */
 	kfree(data);

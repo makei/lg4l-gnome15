@@ -20,6 +20,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 #include <linux/usb.h>
@@ -126,9 +127,11 @@ struct g110_data {
 static const unsigned int g110_default_key_map[G110_KEYS] = {
   KEY_F1, KEY_F2, KEY_F3, KEY_F4,
   KEY_F5, KEY_F6, KEY_F7, KEY_F8,
+
   KEY_F9, KEY_F10, KEY_F11, KEY_F12,
   /* M1, M2, M3, MR */
   KEY_PROG1, KEY_PROG2, KEY_PROG3, KEY_RECORD,
+
   KEY_KBDILLUMTOGGLE
 };
 
@@ -144,7 +147,7 @@ static int g110_input_get_keycode(struct input_dev * dev,
 		.flags    = 0,
 		.len      = sizeof(scancode),
 		.index    = scancode,
-		.scancode = { scancode },
+		.scancode = scancode,
 	};
 	
 	retval   = input_get_keycode(dev, &ke);
@@ -847,6 +850,9 @@ static void g110_handle_key_event(struct g110_data *data,
 		return;
 	}
 
+
+	dev_warn(&idev->dev, G110_NAME " REMOVE ME - scancode=%d, keycode=%d, value=%d\n", scancode, keycode, value);
+
 	/* Only report mapped keys */
 	if (keycode != KEY_RESERVED)
 		input_report_key(idev, keycode, value);
@@ -882,6 +888,7 @@ static void g110_raw_event_process_input(struct hid_device *hdev,
 	}
 
 	raw_data[3] &= 0xBF; /* bit 6 is always on */
+	dev_warn(&idev->dev, G110_NAME " **RAW **REMOVE ME - rd0=%d, rd1=%d, rd2=%d, rd3=%d\n", raw_data[0],raw_data[1],raw_data[2],raw_data[3]);
 
 	for (i = 0, mask = 0x01; i < 8; i++, mask <<= 1) {
 		/* Keys G1 through G8 */
@@ -982,17 +989,20 @@ static void g110_initialize_keymap(struct g110_data *data)
 /* Unlock the urb so we can reuse it */
 static void g110_ep1_urb_completion(struct urb *urb)
 {
-	struct hid_device *hdev = urb->context;
-	struct g110_data *data = hid_get_g110data(hdev);
-	struct input_dev *idev = data->input_dev;
-	int i;
+	/* don't process unlinked or failed urbs */
+	if (likely(urb->status == 0)) {
+		struct hid_device *hdev = urb->context;
+		struct g110_data *data = hid_get_g110data(hdev);
+		struct input_dev *idev = data->input_dev;
+		int i;
 
-	for (i = 0; i < 8; i++)
-		g110_handle_key_event(data, idev, 24+i, data->ep1keys[0]&(1<<i));
+		for (i = 0; i < 8; i++)
+			g110_handle_key_event(data, idev, 24+i, data->ep1keys[0]&(1<<i));
 
-	input_sync(idev);
+		input_sync(idev);
 
-	usb_submit_urb(urb, GFP_ATOMIC);
+		usb_submit_urb(urb, GFP_ATOMIC);
+	}
 }
 
 static int g110_ep1_read(struct hid_device *hdev)
@@ -1345,14 +1355,17 @@ static void g110_remove(struct hid_device *hdev)
 
 	input_unregister_device(data->input_dev);
 
-	kfree(data->name);
-
 	/* Clean up the leds */
 	for (i = 0; i < 6; i++) {
-		led_classdev_unregister(data->led_cdev[i]);
-		kfree(data->led_cdev[i]->name);
-		kfree(data->led_cdev[i]);
+		if(data->led_cdev[i] != NULL) {
+			led_classdev_unregister(data->led_cdev[i]);
+			if(data->led_cdev[i]->name != NULL)
+				kfree(data->led_cdev[i]->name);
+			kfree(data->led_cdev[i]);
+		}
 	}
+
+	kfree(data->name);
 
 	hdev->ll_driver->close(hdev);
 
