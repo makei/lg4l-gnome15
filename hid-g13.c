@@ -1027,6 +1027,7 @@ static void g13_remove(struct hid_device *hdev)
 }
 
 #ifdef CONFIG_PM
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34)
 
 static void g13_post_reset_start(struct hid_device *hdev)
 {
@@ -1051,6 +1052,7 @@ static int g13_reset_resume(struct hid_device *hdev)
 	return 0;
 }
 
+#endif
 #endif /* CONFIG_PM */
 
 static const struct hid_device_id g13_devices[] = {
@@ -1068,9 +1070,11 @@ static struct hid_driver g13_driver = {
 	.remove			= g13_remove,
 	.raw_event		= g13_raw_event,
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34)
 #ifdef CONFIG_PM
 	.resume                 = g13_resume,
 	.reset_resume           = g13_reset_resume,
+#endif
 #endif
 };
 

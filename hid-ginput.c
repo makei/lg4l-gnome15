@@ -72,6 +72,8 @@ int ginput_get_keycode(struct input_dev * dev,
 {
 	int retval;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+
 	struct input_keymap_entry ke = {
 		.flags    = 0,
 		.len      = sizeof(scancode),
@@ -83,6 +85,12 @@ int ginput_get_keycode(struct input_dev * dev,
 
 	retval   = input_get_keycode(dev, &ke);
 	*keycode = ke.keycode;
+
+#else
+
+	retval = ginput_get_keycode(dev, scancode, keycode);
+
+#endif
 
 	return retval;
 }
@@ -122,6 +130,7 @@ EXPORT_SYMBOL_GPL(ginput_handle_key_event);
 
 
 /* set a keycode in the current keymap (kernel callback) */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
 int ginput_setkeycode(struct input_dev * dev,
                       const struct input_keymap_entry * ke,
                       unsigned int * old_keycode)
@@ -154,6 +163,40 @@ int ginput_setkeycode(struct input_dev * dev,
 
 	return 0;
 }
+#else
+int ginput_setkeycode(struct input_dev *dev,
+                     int scancode,
+                     int keycode)
+{
+        unsigned long irq_flags;
+	int old_keycode;
+	int i;
+	struct gcommon_data *gdata = input_get_gdata(dev);
+	struct ginput_data *idata = &gdata->input_data;
+
+	if (scancode >= dev->keycodemax)
+		return -EINVAL;
+
+	spin_lock_irqsave(&gdata->lock, irq_flags);
+
+	old_keycode = idata->keycode[scancode];
+	idata->keycode[scancode] = keycode;
+
+	__clear_bit(old_keycode, dev->keybit);
+	__set_bit(keycode, dev->keybit);
+
+	for (i = 0; i < dev->keycodemax; i++) {
+		if (idata->keycode[i] == old_keycode) {
+			__set_bit(old_keycode, dev->keybit);
+			break; /* Setting the bit twice is useless, so break*/
+		}
+	}
+
+	spin_unlock_irqrestore(&gdata->lock, irq_flags);
+
+	return 0;
+}
+#endif
 EXPORT_SYMBOL_GPL(ginput_setkeycode);
 
 
@@ -162,6 +205,9 @@ static int ginput_setkeycode_internal(struct input_dev * dev,
                                       unsigned int scancode,
                                       unsigned int keycode)
 {
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+
 	struct input_keymap_entry ke;
 	unsigned int old_keycode;
 
@@ -169,9 +215,15 @@ static int ginput_setkeycode_internal(struct input_dev * dev,
 	*((unsigned int *) ke.scancode) = scancode;
 
 	return ginput_setkeycode(dev, &ke, &old_keycode);
+
+#else
+
+	return ginput_setkeycode(dev, scancode, keycode);
+#endif
 }
 
 /* read a keycode from the current keymap (kernel callback) */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
 int ginput_getkeycode(struct input_dev *dev,
                       struct input_keymap_entry *ke)
 {
@@ -188,6 +240,24 @@ int ginput_getkeycode(struct input_dev *dev,
 
 	return 0;
 }
+#else
+int ginput_getkeycode(struct input_dev *dev,
+                      int scancode,
+                      int *keycode)
+{
+	struct gcommon_data *gdata = input_get_gdata(dev);
+
+	if (!dev->keycodesize)
+		return -EINVAL;
+
+	if (scancode >= dev->keycodemax)
+		return -EINVAL;
+
+	*keycode = gdata->input_data.keycode[scancode];
+
+	return 0;
+}
+#endif
 EXPORT_SYMBOL_GPL(ginput_getkeycode);
 
 
