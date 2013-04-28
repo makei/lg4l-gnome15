@@ -1,0 +1,23 @@
+#!/bin/bash
+#
+# Generates the symbol table for kernel modules, usable by GDB.
+#
+# Run this on the debugee after loading modules into the kernel (on each loading).
+#
+# For details see http://stackoverflow.com/questions/6260927/module-debugging-through-kgdb
+#
+
+
+MODULE_NAMES="hid_g13 hid_g15 hid_g19 hid_gfb hid_g110 hid_ginput"
+
+for MODULE_NAME in ${MODULE_NAMES} ; do
+    MODULE_FILE=$(/sbin/modinfo $MODULE_NAME | awk '/filename/{print $2}' | 
+        sed 's|.*/|/home/cipi/pinky/src/kerndev-i386/logitech/kernel-module/|')
+    DIR="/sys/module/${MODULE_NAME}/sections/"
+    if [ -d $DIR ] ; then
+        COMMAND="add-symbol-file $MODULE_FILE $(cat $DIR/.text)"
+        [ -f "$DIR/.bss"  ] && COMMAND="$COMMAND -s .bss $(cat $DIR/.bss)"
+        [ -f "$DIR/.data" ] && COMMAND="$COMMAND -s .data $(cat $DIR/.data)"
+        echo $COMMAND
+    fi
+done
