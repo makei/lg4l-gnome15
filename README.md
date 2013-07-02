@@ -37,3 +37,8 @@ rebind script to put the new module in control of the device:
 
     # ./rebind
 
+A udev rules file is also available to automatically bind the device to the new module:
+
+Just copy the 90-lg4l.rules file into your udev rules directory (usually /etc/udev/rules.d/),
+run udevadm control --reload, and plug your device.
+
