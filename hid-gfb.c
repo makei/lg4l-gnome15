@@ -28,9 +28,15 @@
 #include <linux/vmalloc.h>
 #include <linux/leds.h>
 #include <linux/completion.h>
+#include <linux/version.h>
 
 #include "hid-ids.h"
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+
 #include "usbhid/usbhid.h"
+
+#endif
 
 #include "hid-gfb.h"
 

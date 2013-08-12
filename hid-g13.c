@@ -30,7 +30,12 @@
 #include <linux/version.h>
 
 #include "hid-ids.h"
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+
 #include "usbhid/usbhid.h"
+
+#endif
 
 #include "hid-gfb.h"
 
@@ -219,7 +224,15 @@ static void g13_led_send(struct hid_device *hdev)
 	data->led_report->field[0]->value[2] = 0x00;
 	data->led_report->field[0]->value[3] = 0x00;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, data->led_report, HID_REQ_SET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, data->led_report, USB_DIR_OUT);
+
+#endif
 }
 
 static void g13_led_set(struct led_classdev *led_cdev,
@@ -314,7 +327,15 @@ static void g13_rgb_send(struct hid_device *hdev)
 	data->backlight_report->field[0]->value[2] = data->rgb[2];
 	data->backlight_report->field[0]->value[3] = 0x00;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, data->backlight_report, HID_REQ_SET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, data->backlight_report, USB_DIR_OUT);
+
+#endif
 }
 
 static void g13_led_bl_brightness_set(struct led_classdev *led_cdev,
@@ -820,7 +841,15 @@ static void g13_feature_report_4_send(struct hid_device *hdev, int which)
 		return;
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, data->feature_report_4, HID_REQ_SET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, data->feature_report_4, USB_DIR_OUT);
+
+#endif
 }
 
 /*
@@ -1279,7 +1308,17 @@ static int g13_probe(struct hid_device *hdev,
 	 * report 6 and wait for us to get a response.
 	 */
 	g13_feature_report_4_send(hdev, G13_REPORT_4_INIT);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, data->start_input_report, HID_REQ_GET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, data->start_input_report, USB_DIR_IN);
+
+#endif
+
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
@@ -1308,8 +1347,19 @@ static int g13_probe(struct hid_device *hdev,
 	 * report 6 and wait for us to get a response.
 	 */
 	g13_feature_report_4_send(hdev, G13_REPORT_4_FINALIZE);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, data->start_input_report, HID_REQ_GET_REPORT);
+	hid_hw_request(hdev, data->start_input_report, HID_REQ_GET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, data->start_input_report, USB_DIR_IN);
 	usbhid_submit_report(hdev, data->start_input_report, USB_DIR_IN);
+
+#endif
+
 	wait_for_completion_timeout(&data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
