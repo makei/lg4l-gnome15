@@ -1,8 +1,6 @@
 #ifndef GINPUT_H_INCLUDED
 #define GINPUT_H_INCLUDED		1
 
-#include <linux/version.h>
-
 struct gcommon_data;
 
 struct ginput_data {
@@ -32,20 +30,11 @@ void ginput_handle_key_event(struct gcommon_data *gdata,
 /* Kernel callbacks for input_dev
  * get/set a keycode within the current keymap
  */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
 int ginput_setkeycode(struct input_dev * dev,
                       const struct input_keymap_entry * ke,
                       unsigned int * old_keycode);
 int ginput_getkeycode(struct input_dev *dev,
                       struct input_keymap_entry *ke);
-#else
-int ginput_setkeycode(struct input_dev * dev,
-                      int scancode,
-                      int keycode);
-int ginput_getkeycode(struct input_dev *dev,
-                      int scancode,
-                      int *keycode);
-#endif
 
 /* Sysfs attribute keymap_index:
  * get/set current keymap for M* buttons.

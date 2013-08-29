@@ -703,7 +703,6 @@ static void g19_initialize_keymap(struct gcommon_data *gdata)
 
 
 #ifdef CONFIG_PM
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34)
 
 static void g19_post_reset_start(struct hid_device *hdev)
 {
@@ -728,7 +727,6 @@ static int g19_reset_resume(struct hid_device *hdev)
 	return 0;
 }
 
-#endif
 #endif /* CONFIG_PM */
 
 static void g19_ep1_urb_completion(struct urb *urb)
@@ -1181,12 +1179,11 @@ static struct hid_driver g19_driver = {
 	.remove			= g19_remove,
 	.raw_event		= g19_raw_event,
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34)
 #ifdef CONFIG_PM
 	.resume                 = g19_resume,
 	.reset_resume           = g19_reset_resume,
 #endif
-#endif
+
 };
 
 static int __init g19_init(void)
