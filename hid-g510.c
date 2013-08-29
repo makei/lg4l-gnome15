@@ -31,7 +31,12 @@
 #include <linux/version.h>
 
 #include "hid-ids.h"
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
 #include "usbhid/usbhid.h"
+
+#endif
 
 #include "hid-gcommon.h"
 
@@ -163,7 +168,15 @@ static void g510_msg_send(struct hid_device *hdev, u8 msg, u8 value1, u8 value2)
 	g510data->led_report->field[0]->value[1] = value1;
 	g510data->led_report->field[0]->value[2] = value2;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, g510data->led_report, HID_REQ_SET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, g510data->led_report, USB_DIR_OUT);
+
+#endif
 }
 
 static void g510_led_set(struct led_classdev *led_cdev,
@@ -259,7 +272,16 @@ static void g510_rgb_send(struct hid_device *hdev)
 	g510data->backlight_report->field[0]->value[2] = g510data->rgb[2];
 	g510data->backlight_report->field[0]->value[3] = 0x00;
 
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, g510data->backlight_report, HID_REQ_SET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, g510data->backlight_report, USB_DIR_OUT);
+
+#endif
 }
 
 static void g510_led_bl_brightness_set(struct led_classdev *led_cdev,
@@ -445,7 +467,15 @@ static void g510_feature_report_4_send(struct hid_device *hdev, int which)
 		return;
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, g510data->feature_report_4, HID_REQ_SET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, g510data->feature_report_4, USB_DIR_OUT);
+
+#endif
 }
 
 /*
@@ -878,7 +908,17 @@ static int g510_probe(struct hid_device *hdev,
 	 * report 6 and wait for us to get a response.
 	 */
 	g510_feature_report_4_send(hdev, G510_REPORT_4_INIT);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, g510data->start_input_report, HID_REQ_GET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, g510data->start_input_report, USB_DIR_IN);
+
+#endif
+
 	wait_for_completion_timeout(&g510data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */
@@ -902,8 +942,19 @@ static int g510_probe(struct hid_device *hdev,
 	 * report 6 and wait for us to get a response.
 	 */
 	g510_feature_report_4_send(hdev, G510_REPORT_4_FINALIZE);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+	hid_hw_request(hdev, g510data->start_input_report, HID_REQ_GET_REPORT);
+	hid_hw_request(hdev, g510data->start_input_report, HID_REQ_GET_REPORT);
+
+#else
+
 	usbhid_submit_report(hdev, g510data->start_input_report, USB_DIR_IN);
 	usbhid_submit_report(hdev, g510data->start_input_report, USB_DIR_IN);
+
+#endif
+
 	wait_for_completion_timeout(&g510data->ready, HZ);
 
 	/* Protect data->ready_stages before checking whether we're ready to proceed */

@@ -29,9 +29,15 @@
 #include <linux/leds.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
+#include <linux/version.h>
 
 #include "hid-ids.h"
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
 #include "usbhid/usbhid.h"
+
+#endif
 
 #include "hid-gcommon.h"
 #define GFB_NAME "Logitech GamePanel Framebuffer"
