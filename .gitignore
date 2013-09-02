@@ -4,7 +4,10 @@
 *.mod.c
 *.o
 *.o.d
+*.gdb
 .tmp_versions
 Module.symvers
 modules.order
+
 /.project
+/tools/fb-test

@@ -1,17 +1,14 @@
 ifneq ($(KERNELRELEASE),)
 # kbuild part
 
-KVERSION = $(shell uname -r)
-#EXTRA_CFLAGS=-I$(KDIR)/drivers/hid
-
-obj-m := hid-g13.o hid-g15.o hid-g15v2.o hid-g510.o hid-g19.o hid-gfb.o hid-g110.o
+obj-m := hid-g13.o hid-g15.o hid-g15v2.o hid-g510.o hid-g19.o hid-gfb.o hid-g110.o hid-ginput.o
 
 else
 
 KVERSION = $(shell uname -r)
 KDIR := /lib/modules/$(KVERSION)/build
 MODULE_INSTALL_DIR := /lib/modules/$(KVERSION)/updates/g-series
-MODS := hid-g13.ko hid-g15.ko hid-g15v2.ko hid-g510.ko hid-g19.ko hid-gfb.ko hid-g110.ko
+MODS := hid-g13.ko hid-g15.ko hid-g15v2.ko hid-g510.ko hid-g19.ko hid-gfb.ko hid-g110.ko hid-ginput.ko
 PWD := $(shell pwd)
 
 default:
@@ -33,7 +30,7 @@ g110test:
 	sudo make install
 
 g19rmmod:
-	sudo rmmod hid-g19 hid-gfb
+	sudo rmmod hid-g19 hid-gfb hid-ginput
 
 g19insmod:
 	sudo modprobe hid-g19

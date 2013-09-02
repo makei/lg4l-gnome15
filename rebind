@@ -1,39 +1,33 @@
-#!/bin/sh
+#!/bin/bash
 
-# run me as root
+SFS_HID_DEVICES="/sys/bus/hid/devices"
+SFS_HID_DRIVERS="/sys/bus/hid/drivers"
+SFS_HID_GENERIC="$SFS_HID_DRIVERS/hid-generic"
 
-# first unbind them all
-for dev in `ls /sys/bus/hid/drivers/generic-usb/ | egrep '046D:(C21C|C222|C229|C22B|C227|C22D|C22E)'`
-do echo -n $dev > /sys/bus/hid/drivers/generic-usb/unbind
-done
+# kernels before 3.5.0 use generic-usb, while newer ones have hid-generic
+[[ -d "$SFS_HID_DRIVERS/generic-usb" ]] && SFS_HID_GENERIC="$SFS_HID_DRIVERS/generic-usb"
+[[ -d "$SFS_HID_DRIVERS/hid-generic" ]] && SFS_HID_GENERIC="$SFS_HID_DRIVERS/hid-generic"
 
-# now bind to correct module
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C21C'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g13/bind
-done
+rebind()
+{
+  # assume device is unbound if CONFIG_HID or CONFIG_HID_GENERIC are not enabled
+  if [[ -n "$SFS_HID_GENERIC" ]] ; then
+    for dev in $(ls $SFS_HID_GENERIC | egrep $1) ; do
+      echo -n $dev > $SFS_HID_GENERIC/unbind
+    done
+  fi
+  
+  for dev in $(ls $SFS_HID_DEVICES | egrep $1) ; do
+    if [[ ! -e "$SFS_HID_DRIVERS/$2/$dev" ]] ; then
+      echo -n $dev > $SFS_HID_DRIVERS/$2/bind
+    fi
+  done
+}
 
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C222'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g15/bind
-done
-
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C227'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g15v2/bind
-done
-
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C229'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g19/bind
-done
-
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:C22B'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g110/bind
-done
-
-for dev in `ls /sys/bus/hid/devices/ | egrep '046D:(C22D|C22E)'`
-do 
-   echo -n $dev > /sys/bus/hid/drivers/hid-g510/bind
-done
+rebind 046D:C21C hid-g13
+rebind 046D:C222 hid-g15
+rebind 046D:C227 hid-g15v2
+rebind 046D:C229 hid-g19
+rebind 046D:C22B hid-g110
+rebind 046D:C22D hid-g510
+rebind 046D:C22E hid-g510
